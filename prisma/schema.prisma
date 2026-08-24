@@ -1,0 +1,177 @@
+// Life Organizer API — Prisma schema
+// Ver: Life_Organizer_API_Especificacion.docx, sección 4
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  password     String // bcrypt hash
+  name         String
+  timezone     String   @default("Europe/Madrid")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events       Event[]
+  goals        Goal[]
+  goalProgress GoalProgress[]
+  transactions Transaction[]
+  savingsGoals SavingsGoal[]
+  projects     Project[]
+  hobbies      Hobby[]
+  hobbySessions HobbySession[]
+}
+
+model Event {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  title            String
+  description      String?
+  type             String // "work", "study", "gym", "meeting", "free"
+  startTime        DateTime
+  endTime          DateTime
+  location         String?
+  isRecurring      Boolean  @default(false)
+  recurringPattern String? // "weekly", "biweekly", "monthly"
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, startTime])
+}
+
+model Goal {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  title        String
+  description  String?
+  period       String // "weekly" | "monthly"
+  targetValue  Int // meta numérica (ej: 7 días, 20 horas)
+  currentValue Int      @default(0)
+  completed    Boolean  @default(false)
+  bonusPoints  Int      @default(10) // puntos si completa
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  periodStart  DateTime
+  periodEnd    DateTime
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progress GoalProgress[]
+
+  @@index([userId])
+}
+
+model GoalProgress {
+  id     Int      @id @default(autoincrement())
+  goalId Int
+  userId Int
+  value  Int // valor agregado hoy
+  date   DateTime @default(now())
+  note   String?
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([goalId, date])
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  type        String // "income" | "expense"
+  amount      Decimal  @db.Decimal(12, 2)
+  category    String // "salary", "food", "transport", "entertainment", etc.
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model SavingsGoal {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  name          String // "Ahorro Vacaciones", "Fondo Emergencia"
+  targetAmount  Decimal   @db.Decimal(12, 2)
+  currentAmount Decimal   @default(0) @db.Decimal(12, 2)
+  category      String // para filtrar transacciones que cuenten
+  deadline      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  title       String
+  description String?
+  status      String // "idea", "en_curso", "pausado", "completado"
+  priority    String // "low", "medium", "high"
+  deadline    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks ProjectTask[]
+
+  @@index([userId])
+}
+
+model ProjectTask {
+  id          Int       @id @default(autoincrement())
+  projectId   Int
+  title       String
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Hobby {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  name        String
+  category    String // "reading", "gaming", "music", "sports", "art"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions HobbySession[]
+
+  @@index([userId])
+}
+
+model HobbySession {
+  id              Int      @id @default(autoincrement())
+  hobbyId         Int
+  userId          Int
+  durationMinutes Int
+  date            DateTime @default(now())
+  notes           String?
+
+  hobby Hobby @relation(fields: [hobbyId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([hobbyId, date])
+}

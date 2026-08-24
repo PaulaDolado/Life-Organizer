@@ -1,0 +1,160 @@
+import { Router } from "express";
+import * as financeController from "../controllers/financeController";
+import { authMiddleware } from "../middlewares/authMiddleware";
+import { validate } from "../middlewares/validation";
+import {
+  idParamSchema,
+  monthYearParamSchema,
+  yearParamSchema,
+  listTransactionsQuerySchema,
+  createTransactionSchema,
+  updateTransactionSchema,
+  createSavingsGoalSchema,
+  analyticsQuerySchema,
+} from "../validators/financeValidators";
+
+const router = Router();
+
+router.use(authMiddleware);
+
+/**
+ * @openapi
+ * /finance/balance/{month}/{year}:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Balance del mes (ingresos - gastos)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Balance mensual }
+ */
+router.get(
+  "/balance/:month/:year",
+  validate(monthYearParamSchema, "params"),
+  financeController.getMonthlyBalance
+);
+
+/**
+ * @openapi
+ * /finance/balance/year/{year}:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Balance anual con desglose mensual
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Balance anual }
+ */
+router.get("/balance/year/:year", validate(yearParamSchema, "params"), financeController.getAnnualBalance);
+
+/**
+ * @openapi
+ * /finance/transactions:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Historial de transacciones (filtrable)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema: { type: string, enum: [income, expense] }
+ *       - in: query
+ *         name: category
+ *         schema: { type: string }
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200: { description: Lista paginada de transacciones }
+ *   post:
+ *     tags: [Finance]
+ *     summary: Registrar ingreso/gasto
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Transacción creada }
+ */
+router.get(
+  "/transactions",
+  validate(listTransactionsQuerySchema, "query"),
+  financeController.listTransactions
+);
+router.post("/transactions", validate(createTransactionSchema), financeController.createTransaction);
+
+/**
+ * @openapi
+ * /finance/transactions/{id}:
+ *   put:
+ *     tags: [Finance]
+ *     summary: Editar transacción
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Transacción actualizada }
+ *   delete:
+ *     tags: [Finance]
+ *     summary: Eliminar transacción
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Transacción eliminada }
+ */
+router.put(
+  "/transactions/:id",
+  validate(idParamSchema, "params"),
+  validate(updateTransactionSchema),
+  financeController.updateTransaction
+);
+router.delete(
+  "/transactions/:id",
+  validate(idParamSchema, "params"),
+  financeController.deleteTransaction
+);
+
+/**
+ * @openapi
+ * /finance/savings-goals:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Metas de ahorro con progreso calculado
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Lista de metas de ahorro }
+ *   post:
+ *     tags: [Finance]
+ *     summary: Crear meta de ahorro
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Meta de ahorro creada }
+ */
+router.get("/savings-goals", financeController.listSavingsGoals);
+router.post(
+  "/savings-goals",
+  validate(createSavingsGoalSchema),
+  financeController.createSavingsGoal
+);
+
+/**
+ * @openapi
+ * /finance/analytics:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Top 5 categorías de gasto, tendencia mensual y proyección anual
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: month
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: year
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Analytics financieros }
+ */
+router.get("/analytics", validate(analyticsQuerySchema, "query"), financeController.getAnalytics);
+
+export default router;
