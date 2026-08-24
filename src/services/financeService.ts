@@ -35,15 +35,40 @@ export async function getAnnualBalance(userId: number, year: number) {
   const reference = new Date(year, 0, 1);
   const start = startOfYear(reference);
   const end = endOfYear(reference);
-  const totals = await sumByType(userId, start, end);
 
-  const monthlyBreakdown = [];
-  for (let month = 1; month <= 12; month += 1) {
-    const monthTotals = await getMonthlyBalance(userId, month, year);
-    monthlyBreakdown.push(monthTotals);
+  // Una sola consulta para todo el año; el desglose mensual se calcula en memoria
+  // en vez de lanzar 12 consultas (una por mes).
+  const transactions = await prisma.transaction.findMany({
+    where: { userId, date: { gte: start, lte: end } },
+    select: { type: true, amount: true, date: true },
+  });
+
+  const monthlyBreakdown = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    year,
+    income: 0,
+    expense: 0,
+    balance: 0,
+  }));
+
+  let income = 0;
+  let expense = 0;
+  for (const t of transactions) {
+    const amount = toNumber(t.amount);
+    const bucket = monthlyBreakdown[new Date(t.date).getMonth()];
+    if (t.type === "income") {
+      income += amount;
+      bucket.income += amount;
+    } else {
+      expense += amount;
+      bucket.expense += amount;
+    }
   }
+  monthlyBreakdown.forEach((b) => {
+    b.balance = b.income - b.expense;
+  });
 
-  return { year, ...totals, monthlyBreakdown };
+  return { year, income, expense, balance: income - expense, monthlyBreakdown };
 }
 
 interface ListTransactionsFilters {
@@ -157,18 +182,32 @@ async function computeSavingsProgress(userId: number, category: string) {
 
 export async function listSavingsGoals(userId: number) {
   const goals = await prisma.savingsGoal.findMany({ where: { userId } });
+  if (goals.length === 0) return [];
 
-  return Promise.all(
-    goals.map(async (goal) => {
-      const currentAmount = await computeSavingsProgress(userId, goal.category);
-      const targetAmount = toNumber(goal.targetAmount);
-      return {
-        ...goal,
-        currentAmount,
-        progressPercent: targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : 0,
-      };
-    })
-  );
+  // Una sola consulta agrupada por categoría (en vez de 2 aggregate por cada meta de ahorro).
+  const categories = [...new Set(goals.map((g) => g.category))];
+  const grouped = await prisma.transaction.groupBy({
+    by: ["category", "type"],
+    where: { userId, category: { in: categories } },
+    _sum: { amount: true },
+  });
+
+  const netByCategory = new Map<string, number>();
+  for (const g of grouped) {
+    const amount = toNumber(g._sum.amount);
+    const current = netByCategory.get(g.category) ?? 0;
+    netByCategory.set(g.category, current + (g.type === "income" ? amount : -amount));
+  }
+
+  return goals.map((goal) => {
+    const currentAmount = Math.max(0, netByCategory.get(goal.category) ?? 0);
+    const targetAmount = toNumber(goal.targetAmount);
+    return {
+      ...goal,
+      currentAmount,
+      progressPercent: targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : 0,
+    };
+  });
 }
 
 export async function createSavingsGoal(userId: number, input: SavingsGoalInput) {
@@ -190,26 +229,49 @@ export async function getAnalytics(userId: number, month?: number, year?: number
   const refMonth = month ?? now.getMonth() + 1;
   const refYear = year ?? now.getFullYear();
   const reference = new Date(refYear, refMonth - 1, 1);
-  const start = startOfMonth(reference);
-  const end = endOfMonth(reference);
+  const currentMonthStart = startOfMonth(reference);
+  const currentMonthEnd = endOfMonth(reference);
+  const rangeStart = startOfMonth(subMonths(reference, 5));
 
-  const grouped = await prisma.transaction.groupBy({
-    by: ["category"],
-    where: { userId, type: "expense", date: { gte: start, lte: end } },
-    _sum: { amount: true },
+  // Una sola consulta cubre tanto el top de categorías del mes como la tendencia de 6 meses
+  // (en vez de 1 groupBy + 6 llamadas a getMonthlyBalance, cada una con 2 aggregate).
+  const transactions = await prisma.transaction.findMany({
+    where: { userId, date: { gte: rangeStart, lte: currentMonthEnd } },
+    select: { type: true, category: true, amount: true, date: true },
   });
 
-  const topCategories = grouped
-    .map((g) => ({ category: g.category, total: toNumber(g._sum.amount) }))
+  const categoryTotals = new Map<string, number>();
+  const monthBuckets = new Map<string, { month: number; year: number; income: number; expense: number }>();
+  for (let i = 5; i >= 0; i -= 1) {
+    const monthDate = subMonths(reference, i);
+    monthBuckets.set(`${monthDate.getFullYear()}-${monthDate.getMonth()}`, {
+      month: monthDate.getMonth() + 1,
+      year: monthDate.getFullYear(),
+      income: 0,
+      expense: 0,
+    });
+  }
+
+  for (const t of transactions) {
+    const amount = toNumber(t.amount);
+    const date = new Date(t.date);
+    const bucket = monthBuckets.get(`${date.getFullYear()}-${date.getMonth()}`);
+    if (bucket) {
+      if (t.type === "income") bucket.income += amount;
+      else bucket.expense += amount;
+    }
+
+    if (t.type === "expense" && date >= currentMonthStart && date <= currentMonthEnd) {
+      categoryTotals.set(t.category, (categoryTotals.get(t.category) ?? 0) + amount);
+    }
+  }
+
+  const topCategories = [...categoryTotals.entries()]
+    .map(([category, total]) => ({ category, total }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
-  const monthlyTrend = [];
-  for (let i = 5; i >= 0; i -= 1) {
-    const monthDate = subMonths(reference, i);
-    const totals = await getMonthlyBalance(userId, monthDate.getMonth() + 1, monthDate.getFullYear());
-    monthlyTrend.push(totals);
-  }
+  const monthlyTrend = [...monthBuckets.values()].map((b) => ({ ...b, balance: b.income - b.expense }));
 
   const avgMonthlyBalance =
     monthlyTrend.reduce((sum, m) => sum + m.balance, 0) / (monthlyTrend.length || 1);

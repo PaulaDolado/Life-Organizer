@@ -7,7 +7,10 @@ export class AppError extends Error {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
-    Object.setPrototypeOf(this, AppError.prototype);
+    // No usar Object.setPrototypeOf(this, AppError.prototype) aquí: con target ES2020,
+    // "class X extends AppError" ya deja la cadena de prototipos correcta, y forzarla a
+    // AppError.prototype rompería "instanceof NotFoundError/UnauthorizedError/etc." en
+    // las subclases (solo haría falta ese workaround si el target de compilación fuera ES5).
     Error.captureStackTrace(this, this.constructor);
   }
 }

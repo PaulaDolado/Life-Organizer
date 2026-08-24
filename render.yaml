@@ -1,0 +1,37 @@
+# Render Blueprint — despliegue declarativo (Render > New > Blueprint, apunta a este repo)
+# Docs: https://render.com/docs/blueprint-spec
+databases:
+  - name: life-organizer-db
+    databaseName: life_organizer
+    plan: free
+    postgresMajorVersion: "15"
+
+services:
+  - type: web
+    name: life-organizer-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: life-organizer-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: CORS_ORIGIN
+        value: "*" # cámbialo por el dominio real del dashboard en producción
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX
+        value: "100"

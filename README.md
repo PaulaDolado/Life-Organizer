@@ -2,7 +2,9 @@
 
 API REST de organización personal integral: **Agenda · Metas · Finanzas · Proyectos · Hobbies**.
 
-> Estado actual: **Sprint 1, 2 y 3 completos** (Setup + Auth + Agenda + Metas + Finanzas + Proyectos + Hobbies). Todos los módulos de negocio de la especificación están implementados. Ver [Roadmap](#roadmap) para lo que falta (Sprint 4: testing exhaustivo/hardening, Sprint 5: deployment + dashboard).
+> Estado actual: **Sprint 1-5 completos.** API con los 5 módulos de negocio, endurecida y testeada, más CI/CD, configuración de deployment y un dashboard demo en React. Ver [Roadmap](#roadmap) para el detalle de cada sprint.
+>
+> ⚠️ **Lo único que falta es acción tuya**: yo no puedo crear una cuenta en Railway/Render ni desplegar en tu nombre (requiere tus propias credenciales). Todo lo demás — Dockerfile, `render.yaml`, CI, guía paso a paso — ya está listo en [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Stack
 
@@ -70,12 +72,18 @@ npm run dev
 
 ## Tests
 
-Los tests de integración usan la base de datos configurada en `DATABASE_URL` y la limpian entre ejecuciones (`beforeEach`). Usa una base de datos de desarrollo/test dedicada, no producción.
+Hay dos tipos de tests, separados por carpeta:
+
+- **`tests/unit/`** — Prisma mockeado (`jest.mock("../config/database")`); no requieren base de datos. Cubren utils, validadores Joi, middlewares y la lógica de negocio de cada `service` (cálculo de balance, streak de metas, % de progreso de proyectos, etc.). **114 tests, corren en unos segundos.**
+- **`tests/integration/`** — Supertest contra la app real + Postgres. Usan la base de datos de `DATABASE_URL` y la limpian entre tests (`beforeEach`). Usa una base de datos de desarrollo/test dedicada, no producción.
 
 ```bash
-npm test
+npm test                 # unit + integration (requiere Postgres levantado)
+npx jest tests/unit       # solo unitarios, sin BD
 npm run test:coverage
 ```
+
+> Nota: `authMiddleware`/`jwt` en los tests unitarios leen `JWT_SECRET` etc. desde `.env` (cargado vía `dotenv/config` en `jest.config.js`), así que necesitas tener un `.env` (aunque sea con los valores de `.env.example`) incluso para correr solo los tests unitarios.
 
 ## Estructura del proyecto
 
@@ -96,7 +104,8 @@ prisma/
 │                              Hobby, HobbySession
 └── seed.ts
 tests/
-└── integration/             # auth.test.ts, agenda.test.ts
+├── unit/                    # utils, validators, middlewares, services (Prisma mockeado)
+└── integration/             # Supertest end-to-end por módulo (requiere Postgres)
 ```
 
 ## Endpoints implementados (Sprint 1)
@@ -174,8 +183,14 @@ Según `Life_Organizer_API_Especificacion.docx` y `Life_Organizer_Seguimiento_Se
 - [x] **Sprint 1** — Setup, Auth (register/login/refresh), Agenda CRUD + tests
 - [x] **Sprint 2** — Metas (Goal + GoalProgress) y Finanzas (Transaction + SavingsGoal) + tests
 - [x] **Sprint 3** — Proyectos (Project + ProjectTask) y Hobbies (Hobby + HobbySession) + tests
-- [ ] **Sprint 4** — Tests exhaustivos (80%+ coverage con la BD real; unitarios además de integración), rate limiting (ya base), logging (ya base), optimización de queries, edge cases
-- [ ] **Sprint 5** — Deployment (Railway/Render), CI/CD, dashboard React demo
+- [x] **Sprint 4** — 114 tests unitarios (Prisma mockeado, corren sin BD) + validadores/middlewares/servicios cubiertos; ESLint configurado; rate limiting reforzado (límite estricto en `/auth`); `trust proxy` y límite de tamaño de body; optimización de queries N+1 en Finanzas (balance anual, analytics, savings-goals: de ~25 consultas a 1-2)
+- [x] **Sprint 5** — CI/CD con GitHub Actions (lint + typecheck + tests con Postgres real + build, en cada push/PR); `render.yaml` para deploy con un clic en Render; guía paso a paso para Railway y Render ([DEPLOYMENT.md](DEPLOYMENT.md)); dashboard demo en [dashboard/](dashboard) (React + TS + Vite) con login, agenda semanal, metas, finanzas (balance + gráfico + top categorías), proyectos y hobbies
+
+## Deployment y dashboard (Sprint 5)
+
+- **CI**: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — en cada push/PR a `main`/`master` corre lint, typecheck, tests de integración contra un Postgres real (contenedor de servicio de GitHub Actions) con cobertura, build de la API y build del dashboard.
+- **Deployment**: ver [DEPLOYMENT.md](DEPLOYMENT.md) para Railway (recomendado) o Render (usa [`render.yaml`](render.yaml) como blueprint). Ninguno de los dos lo hice yo — necesitas tu propia cuenta; los pasos están documentados para que los seas tú quien los ejecute.
+- **Dashboard**: ver [dashboard/README.md](dashboard/README.md) para correrlo localmente contra la API.
 
 El esquema de base de datos (`prisma/schema.prisma`) ya incluye **los 7 modelos completos** de la especificación, así que los siguientes sprints solo añaden rutas/controllers/services — no requieren cambios estructurales grandes en la BD.
 
@@ -189,3 +204,6 @@ El esquema de base de datos (`prisma/schema.prisma`) ya incluye **los 7 modelos 
 - **Racha (streak)** en `/goals/:id/analytics`: cuenta días consecutivos con al menos un registro de progreso, empezando hoy hacia atrás.
 - **Tiempo estimado vs. real (Proyectos)**: la funcionalidad se menciona en la especificación, pero el esquema de `ProjectTask` (sección 4 del documento) no define campos para ello; no se implementó para no desviarse del schema acordado. Se puede añadir en un sprint futuro (`estimatedMinutes`/`actualMinutes` en `ProjectTask`) si se necesita.
 - **`PUT /projects/:id/tasks/:taskId/complete`** marca la tarea como completada (idempotente); no hay endpoint para "descompletarla" — si se necesita, se puede reutilizar `PUT /projects/:id/tasks/:taskId` añadiendo `completed` al validador.
+- **Bug real encontrado y corregido en Sprint 4**: `AppError` (en `utils/errorHandler.ts`) llamaba `Object.setPrototypeOf(this, AppError.prototype)` en su constructor — un workaround típico para que `class extends Error` funcione en target ES5. Como el proyecto compila a ES2020, ese `setPrototypeOf` sobra y además **rompía `instanceof`** para las subclases: `new NotFoundError() instanceof NotFoundError` daba `false` (quedaba como `AppError`). No afectaba las respuestas HTTP (el status code se lee de una propiedad propia, no del prototipo), pero sí rompería cualquier código que discrimine errores por tipo (`catch` específicos, tests). Lo detectaron los tests unitarios nuevos (`.rejects.toThrow(NotFoundError)` fallaba); se corrigió quitando esa línea.
+- **Rate limiting en dos niveles**: límite general (`env.rateLimit.*`, configurable) para toda la API, y uno más estricto (20 req / 15 min) solo en `/auth`, para dificultar fuerza bruta sobre login/register. Ambos se desactivan en `NODE_ENV=test` para no interferir con los tests de integración.
+- **`trust proxy`** solo se activa en producción (Railway/Render corren detrás de un proxy inverso; sin esto, `express-rate-limit` limitaría por la IP del proxy, no la del cliente real).

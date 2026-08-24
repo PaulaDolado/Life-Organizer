@@ -13,9 +13,15 @@ import { logger } from "./utils/logger";
 export function createApp(): Application {
   const app = express();
 
+  // Necesario para que express-rate-limit identifique la IP real del cliente
+  // detrás de un proxy inverso (Railway/Render), en vez de la IP del proxy.
+  if (env.isProduction) {
+    app.set("trust proxy", 1);
+  }
+
   app.use(helmet());
   app.use(cors({ origin: env.cors.origin }));
-  app.use(express.json());
+  app.use(express.json({ limit: "100kb" }));
   app.use(
     morgan(env.isProduction ? "combined" : "dev", {
       stream: { write: (message: string) => logger.info(message.trim()) },
@@ -28,8 +34,20 @@ export function createApp(): Application {
     max: env.rateLimit.max,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => env.isTest,
   });
   app.use(limiter);
+
+  // Límite más estricto en auth para dificultar fuerza bruta sobre login/register.
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => env.isTest,
+    message: { error: "Demasiados intentos, inténtalo de nuevo más tarde" },
+  });
+  app.use("/auth", authLimiter);
 
   app.get("/health", (_req, res) => {
     res.json({ status: "OK" });
