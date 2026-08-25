@@ -5,9 +5,14 @@ import * as projectsService from "../services/projectsService";
 export async function listProjects(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;
-    const { status, priority } = req.query as { status?: string; priority?: string };
-    const projects = await projectsService.listProjects(userId, { status, priority });
-    res.json({ projects });
+    const { status, priority, page, limit } = req.query as unknown as {
+      status?: string;
+      priority?: string;
+      page: number;
+      limit: number;
+    };
+    const result = await projectsService.listProjects(userId, { status, priority, page, limit });
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -97,6 +102,52 @@ export async function completeTask(req: AuthRequest, res: Response, next: NextFu
     const taskId = parseInt(req.params.taskId, 10);
     const task = await projectsService.completeTask(userId, id, taskId);
     res.json(task);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listPages(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const pages = await projectsService.listPages(userId, id);
+    res.json({ pages });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function addPage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const page = await projectsService.addPage(userId, id, req.body);
+    res.status(201).json(page);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updatePage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const pageId = parseInt(req.params.pageId, 10);
+    const page = await projectsService.updatePage(userId, id, pageId, req.body);
+    res.json(page);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deletePage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const pageId = parseInt(req.params.pageId, 10);
+    await projectsService.deletePage(userId, id, pageId);
+    res.json({ message: "Página eliminada" });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,6 @@
 import { prisma } from "../config/database";
 import { endOfWeek, endOfMonth, differenceInCalendarDays } from "date-fns";
+import { buildPagination } from "../utils/pagination";
 import { ForbiddenError, NotFoundError } from "../utils/errorHandler";
 
 interface CreateGoalInput {
@@ -10,9 +11,11 @@ interface CreateGoalInput {
   bonusPoints?: number;
   periodStart?: string | Date;
   periodEnd?: string | Date;
+  autoRenew?: boolean;
 }
 
-function defaultPeriodEnd(period: "weekly" | "monthly", start: Date): Date {
+/** Exportado: lo reutiliza `goalExpiryService` para calcular el periodo siguiente al renovar. */
+export function defaultPeriodEnd(period: "weekly" | "monthly", start: Date): Date {
   return period === "weekly" ? endOfWeek(start, { weekStartsOn: 1 }) : endOfMonth(start);
 }
 
@@ -28,18 +31,39 @@ export async function createGoal(userId: number, input: CreateGoalInput) {
       period: input.period,
       targetValue: input.targetValue,
       bonusPoints: input.bonusPoints ?? 10,
+      autoRenew: input.autoRenew ?? true,
       periodStart,
       periodEnd,
     },
   });
 }
 
-export async function listGoals(userId: number, status: "active" | "completed" | "all" = "active") {
-  const where: { userId: number; completed?: boolean } = { userId };
-  if (status === "active") where.completed = false;
+export async function listGoals(
+  userId: number,
+  status: "active" | "completed" | "expired" | "all" = "active",
+  page = 1,
+  limit = 20
+) {
+  const where: { userId: number; completed?: boolean; expired?: boolean } = { userId };
+  // "active": ni completada ni expirada (una meta expirada no cumplida deja de contar como "activa").
+  if (status === "active") {
+    where.completed = false;
+    where.expired = false;
+  }
   if (status === "completed") where.completed = true;
+  if (status === "expired") where.expired = true;
 
-  return prisma.goal.findMany({ where, orderBy: { periodEnd: "asc" } });
+  const [goals, total] = await Promise.all([
+    prisma.goal.findMany({
+      where,
+      orderBy: { periodEnd: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.goal.count({ where }),
+  ]);
+
+  return { goals, pagination: buildPagination(page, limit, total) };
 }
 
 async function findOwnedGoal(userId: number, goalId: number) {
@@ -74,6 +98,7 @@ export async function updateGoal(
       ...(input.bonusPoints !== undefined ? { bonusPoints: input.bonusPoints } : {}),
       ...(input.periodStart !== undefined ? { periodStart: new Date(input.periodStart) } : {}),
       ...(input.periodEnd !== undefined ? { periodEnd: new Date(input.periodEnd) } : {}),
+      ...(input.autoRenew !== undefined ? { autoRenew: input.autoRenew } : {}),
     },
   });
 }
@@ -118,6 +143,45 @@ export async function registerProgress(userId: number, goalId: number, input: Re
   };
 }
 
+export interface GoalRiskInput {
+  targetValue: number;
+  currentValue: number;
+  completed: boolean;
+  periodStart: Date;
+  periodEnd: Date;
+}
+
+export interface GoalRiskInfo {
+  daysTotal: number;
+  daysElapsed: number;
+  daysRemaining: number;
+  requiredPacePerDay: number;
+  currentPacePerDay: number;
+  atRisk: boolean;
+}
+
+/**
+ * Lógica pura de "¿esta meta está en riesgo de no cumplirse?", extraída para poder
+ * reutilizarla tanto en `GET /goals/:id/analytics` (bajo demanda) como en el scheduler
+ * de notificaciones (`notificationService.createGoalRiskAlerts`, corre periódicamente
+ * sin que nadie tenga que pedirlo). Sin dependencias de Prisma: solo necesita los campos
+ * del Goal, nada de progressEntries.
+ */
+export function computeGoalRisk(goal: GoalRiskInput, now: Date = new Date()): GoalRiskInfo {
+  const daysTotal = Math.max(1, differenceInCalendarDays(goal.periodEnd, goal.periodStart));
+  const daysElapsed = Math.min(daysTotal, Math.max(0, differenceInCalendarDays(now, goal.periodStart)));
+  const daysRemaining = Math.max(0, differenceInCalendarDays(goal.periodEnd, now));
+
+  const remainingValue = Math.max(0, goal.targetValue - goal.currentValue);
+  const requiredPacePerDay = daysRemaining > 0 ? remainingValue / daysRemaining : remainingValue;
+
+  // En riesgo: aún no completada, y al ritmo actual (currentValue / díasTranscurridos) no llegaría a la meta.
+  const currentPacePerDay = daysElapsed > 0 ? goal.currentValue / daysElapsed : 0;
+  const atRisk = !goal.completed && daysRemaining > 0 && currentPacePerDay < requiredPacePerDay * 0.8;
+
+  return { daysTotal, daysElapsed, daysRemaining, requiredPacePerDay, currentPacePerDay, atRisk };
+}
+
 export async function getGoalAnalytics(userId: number, goalId: number) {
   const goal = await findOwnedGoal(userId, goalId);
   const progressEntries = await prisma.goalProgress.findMany({
@@ -140,17 +204,7 @@ export async function getGoalAnalytics(userId: number, goalId: number) {
     cursor.setDate(cursor.getDate() - 1);
   }
 
-  const now = new Date();
-  const daysTotal = Math.max(1, differenceInCalendarDays(goal.periodEnd, goal.periodStart));
-  const daysElapsed = Math.min(daysTotal, Math.max(0, differenceInCalendarDays(now, goal.periodStart)));
-  const daysRemaining = Math.max(0, differenceInCalendarDays(goal.periodEnd, now));
-
-  const remainingValue = Math.max(0, goal.targetValue - goal.currentValue);
-  const requiredPacePerDay = daysRemaining > 0 ? remainingValue / daysRemaining : remainingValue;
-
-  // En riesgo: aún no completada, y al ritmo actual (currentValue / díasTranscurridos) no llegaría a la meta.
-  const currentPacePerDay = daysElapsed > 0 ? goal.currentValue / daysElapsed : 0;
-  const atRisk = !goal.completed && daysRemaining > 0 && currentPacePerDay < requiredPacePerDay * 0.8;
+  const risk = computeGoalRisk(goal);
 
   return {
     goalId: goal.id,
@@ -161,10 +215,10 @@ export async function getGoalAnalytics(userId: number, goalId: number) {
     streakDays,
     periodStart: goal.periodStart,
     periodEnd: goal.periodEnd,
-    daysTotal,
-    daysElapsed,
-    daysRemaining,
-    requiredPacePerDay: Math.round(requiredPacePerDay * 100) / 100,
-    atRisk,
+    daysTotal: risk.daysTotal,
+    daysElapsed: risk.daysElapsed,
+    daysRemaining: risk.daysRemaining,
+    requiredPacePerDay: Math.round(risk.requiredPacePerDay * 100) / 100,
+    atRisk: risk.atRisk,
   };
 }

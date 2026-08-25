@@ -52,4 +52,6 @@ export const updateEventSchema = Joi.object({
 
 export const eventTypeQuerySchema = Joi.object({
   type: Joi.string().valid(...EVENT_TYPES),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(200).default(50),
 });

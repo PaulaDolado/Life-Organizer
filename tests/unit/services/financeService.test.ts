@@ -10,20 +10,22 @@ jest.mock("../../../src/config/database", () => ({
       delete: jest.fn(),
       findUnique: jest.fn(),
     },
-    savingsGoal: { findMany: jest.fn(), create: jest.fn() },
+    savingsGoal: { findMany: jest.fn(), create: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
   },
 }));
 
 import { prisma } from "../../../src/config/database";
 import * as financeService from "../../../src/services/financeService";
+import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
   transaction: {
     aggregate: jest.Mock;
     findMany: jest.Mock;
     groupBy: jest.Mock;
+    create: jest.Mock;
   };
-  savingsGoal: { findMany: jest.Mock };
+  savingsGoal: { findMany: jest.Mock; findUnique: jest.Mock; delete: jest.Mock };
 };
 
 describe("financeService", () => {
@@ -174,6 +176,66 @@ describe("financeService", () => {
 
       expect(result.topCategories).toHaveLength(5);
       expect(result.topCategories[0]).toEqual({ category: "f", total: 60 });
+    });
+  });
+
+  describe("contributeToSavingsGoal", () => {
+    const goal = { id: 1, userId: 1, name: "Kyoto", targetAmount: 500, category: "savings-kyoto" };
+
+    it("crea un income cuando amount es positivo (aportar)", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue(goal);
+      prismaMock.transaction.create.mockResolvedValue({});
+      prismaMock.transaction.aggregate
+        .mockResolvedValueOnce({ _sum: { amount: 100 } }) // income tras el aporte
+        .mockResolvedValueOnce({ _sum: { amount: 0 } }); // expense
+
+      const result = await financeService.contributeToSavingsGoal(1, 1, 100);
+
+      expect(prismaMock.transaction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type: "income", amount: 100, category: "savings-kyoto" }),
+      });
+      expect(result.currentAmount).toBe(100);
+      expect(result.progressPercent).toBe(20);
+    });
+
+    it("crea un expense cuando amount es negativo (retirar/corregir)", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue(goal);
+      prismaMock.transaction.create.mockResolvedValue({});
+      prismaMock.transaction.aggregate
+        .mockResolvedValueOnce({ _sum: { amount: 200 } })
+        .mockResolvedValueOnce({ _sum: { amount: 100 } });
+
+      await financeService.contributeToSavingsGoal(1, 1, -100);
+
+      expect(prismaMock.transaction.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type: "expense", amount: 100, category: "savings-kyoto" }),
+      });
+    });
+
+    it("lanza NotFoundError si la meta no existe", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue(null);
+      await expect(financeService.contributeToSavingsGoal(1, 999, 100)).rejects.toThrow(NotFoundError);
+      expect(prismaMock.transaction.create).not.toHaveBeenCalled();
+    });
+
+    it("lanza ForbiddenError si la meta es de otro usuario", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue({ ...goal, userId: 2 });
+      await expect(financeService.contributeToSavingsGoal(1, 1, 100)).rejects.toThrow(ForbiddenError);
+      expect(prismaMock.transaction.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("deleteSavingsGoal", () => {
+    it("lanza ForbiddenError si la meta es de otro usuario", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue({ id: 1, userId: 2 });
+      await expect(financeService.deleteSavingsGoal(1, 1)).rejects.toThrow(ForbiddenError);
+      expect(prismaMock.savingsGoal.delete).not.toHaveBeenCalled();
+    });
+
+    it("elimina la meta propia", async () => {
+      prismaMock.savingsGoal.findUnique.mockResolvedValue({ id: 1, userId: 1 });
+      await financeService.deleteSavingsGoal(1, 1);
+      expect(prismaMock.savingsGoal.delete).toHaveBeenCalledWith({ where: { id: 1 } });
     });
   });
 });

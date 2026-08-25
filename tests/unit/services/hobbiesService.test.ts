@@ -1,6 +1,13 @@
 jest.mock("../../../src/config/database", () => ({
   prisma: {
-    hobby: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    hobby: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      count: jest.fn(),
+    },
     hobbySession: { create: jest.fn(), aggregate: jest.fn(), findMany: jest.fn(), count: jest.fn() },
   },
 }));
@@ -10,7 +17,7 @@ import * as hobbiesService from "../../../src/services/hobbiesService";
 import { ForbiddenError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
-  hobby: { findUnique: jest.Mock };
+  hobby: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock };
   hobbySession: { aggregate: jest.Mock; findMany: jest.Mock; count: jest.Mock };
 };
 
@@ -51,6 +58,27 @@ describe("hobbiesService", () => {
       prismaMock.hobby.findUnique.mockResolvedValue({ ...ownedHobby, userId: 2 });
 
       await expect(hobbiesService.getHobbyAnalytics(1, 1)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("listHobbies / listByCategory (paginación)", () => {
+    it("listHobbies pagina con skip/take y retorna el total real", async () => {
+      prismaMock.hobby.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      prismaMock.hobby.count.mockResolvedValue(9);
+
+      const result = await hobbiesService.listHobbies(1, 2, 3);
+
+      expect(prismaMock.hobby.findMany.mock.calls[0][0]).toMatchObject({ skip: 3, take: 3 });
+      expect(result.pagination).toEqual({ page: 2, limit: 3, total: 9, pages: 3 });
+    });
+
+    it("listByCategory filtra por categoría además de paginar", async () => {
+      prismaMock.hobby.findMany.mockResolvedValue([]);
+      prismaMock.hobby.count.mockResolvedValue(0);
+
+      await hobbiesService.listByCategory(1, "music", 1, 20);
+
+      expect(prismaMock.hobby.findMany.mock.calls[0][0].where).toEqual({ userId: 1, category: "music" });
     });
   });
 });

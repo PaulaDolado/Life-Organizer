@@ -15,7 +15,11 @@ declare module "date-fns" {
   export function startOfYear(date: Date | number): Date;
   export function endOfYear(date: Date | number): Date;
   export function subMonths(date: Date | number, amount: number): Date;
+  export function addWeeks(date: Date | number, amount: number): Date;
+  export function addMonths(date: Date | number, amount: number): Date;
+  export function addMinutes(date: Date | number, amount: number): Date;
   export function differenceInCalendarDays(dateLeft: Date | number, dateRight: Date | number): number;
+  export function differenceInMinutes(dateLeft: Date | number, dateRight: Date | number): number;
   export function isValid(date: unknown): boolean;
   export function parseISO(dateString: string): Date;
 }

@@ -1,6 +1,13 @@
 jest.mock("../../../src/config/database", () => ({
   prisma: {
-    project: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    project: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      count: jest.fn(),
+    },
     projectTask: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   },
 }));
@@ -10,7 +17,7 @@ import * as projectsService from "../../../src/services/projectsService";
 import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
-  project: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+  project: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
   projectTask: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
 };
 
@@ -76,6 +83,27 @@ describe("projectsService", () => {
 
       expect(task.completed).toBe(true);
       expect(task.completedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe("listProjects (paginación)", () => {
+    it("pagina con skip/take y retorna el total real", async () => {
+      prismaMock.project.findMany.mockResolvedValue([{ id: 1 }]);
+      prismaMock.project.count.mockResolvedValue(15);
+
+      const result = await projectsService.listProjects(1, { page: 3, limit: 5 });
+
+      expect(prismaMock.project.findMany.mock.calls[0][0]).toMatchObject({ skip: 10, take: 5 });
+      expect(result.pagination).toEqual({ page: 3, limit: 5, total: 15, pages: 3 });
+    });
+
+    it("usa page=1 y limit=20 por defecto si no se pasan filtros", async () => {
+      prismaMock.project.findMany.mockResolvedValue([]);
+      prismaMock.project.count.mockResolvedValue(0);
+
+      await projectsService.listProjects(1);
+
+      expect(prismaMock.project.findMany.mock.calls[0][0]).toMatchObject({ skip: 0, take: 20 });
     });
   });
 });

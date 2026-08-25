@@ -5,11 +5,14 @@ import { validate } from "../middlewares/validation";
 import {
   idParamSchema,
   projectTaskParamsSchema,
+  projectPageParamsSchema,
   listProjectsQuerySchema,
   createProjectSchema,
   updateProjectSchema,
   createTaskSchema,
   updateTaskSchema,
+  createPageSchema,
+  updatePageSchema,
 } from "../validators/projectsValidators";
 
 const router = Router();
@@ -133,6 +136,58 @@ router.put(
   "/:id/tasks/:taskId/complete",
   validate(projectTaskParamsSchema, "params"),
   projectsController.completeTask
+);
+
+/**
+ * @openapi
+ * /projects/{id}/pages:
+ *   get:
+ *     tags: [Projects]
+ *     summary: Lista las páginas de la libreta del proyecto
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Lista de páginas }
+ *   post:
+ *     tags: [Projects]
+ *     summary: Crea una página nueva en la libreta
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Página creada }
+ */
+router.get("/:id/pages", validate(idParamSchema, "params"), projectsController.listPages);
+router.post(
+  "/:id/pages",
+  validate(idParamSchema, "params"),
+  validate(createPageSchema),
+  projectsController.addPage
+);
+
+/**
+ * @openapi
+ * /projects/{id}/pages/{pageId}:
+ *   put:
+ *     tags: [Projects]
+ *     summary: Edita el contenido, título u orden de una página
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Página actualizada }
+ *   delete:
+ *     tags: [Projects]
+ *     summary: Elimina una página de la libreta
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Página eliminada }
+ */
+router.put(
+  "/:id/pages/:pageId",
+  validate(projectPageParamsSchema, "params"),
+  validate(updatePageSchema),
+  projectsController.updatePage
+);
+router.delete(
+  "/:id/pages/:pageId",
+  validate(projectPageParamsSchema, "params"),
+  projectsController.deletePage
 );
 
 export default router;

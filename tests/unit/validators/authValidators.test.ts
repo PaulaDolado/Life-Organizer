@@ -1,4 +1,4 @@
-import { registerSchema, loginSchema, refreshSchema } from "../../../src/validators/authValidators";
+import { registerSchema, loginSchema, refreshSchema, updateProfileSchema } from "../../../src/validators/authValidators";
 
 describe("authValidators", () => {
   describe("registerSchema", () => {
@@ -36,6 +36,26 @@ describe("authValidators", () => {
       });
       expect(error).toBeDefined();
     });
+
+    it("acepta un timezone IANA válido", () => {
+      const { error } = registerSchema.validate({
+        email: "test@example.com",
+        password: "Password123",
+        name: "Test User",
+        timezone: "America/New_York",
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it("rechaza un timezone que no es una zona IANA real", () => {
+      const { error } = registerSchema.validate({
+        email: "test@example.com",
+        password: "Password123",
+        name: "Test User",
+        timezone: "no-es-una-timezone",
+      });
+      expect(error).toBeDefined();
+    });
   });
 
   describe("loginSchema", () => {
@@ -59,6 +79,20 @@ describe("authValidators", () => {
     it("acepta un refreshToken presente", () => {
       const { error } = refreshSchema.validate({ refreshToken: "algun-token" });
       expect(error).toBeUndefined();
+    });
+  });
+
+  describe("updateProfileSchema", () => {
+    it("rechaza un objeto vacío", () => {
+      expect(updateProfileSchema.validate({}).error).toBeDefined();
+    });
+
+    it("acepta actualizar solo el timezone", () => {
+      expect(updateProfileSchema.validate({ timezone: "Asia/Tokyo" }).error).toBeUndefined();
+    });
+
+    it("rechaza un timezone inválido", () => {
+      expect(updateProfileSchema.validate({ timezone: "inventada" }).error).toBeDefined();
     });
   });
 });

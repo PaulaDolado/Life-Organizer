@@ -5,6 +5,7 @@ import goalsRoutes from "./goals.routes";
 import financeRoutes from "./finance.routes";
 import projectsRoutes from "./projects.routes";
 import hobbiesRoutes from "./hobbies.routes";
+import notificationsRoutes from "./notifications.routes";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use("/goals", goalsRoutes);
 router.use("/finance", financeRoutes);
 router.use("/projects", projectsRoutes);
 router.use("/hobbies", hobbiesRoutes);
+router.use("/notifications", notificationsRoutes);
 
 export default router;

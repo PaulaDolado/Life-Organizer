@@ -1,4 +1,5 @@
 import { prisma } from "../config/database";
+import { buildPagination } from "../utils/pagination";
 import { ForbiddenError, NotFoundError } from "../utils/errorHandler";
 
 interface CreateProjectInput {
@@ -25,17 +26,30 @@ export async function createProject(userId: number, input: CreateProjectInput) {
 interface ListProjectsFilters {
   status?: string;
   priority?: string;
+  page?: number;
+  limit?: number;
 }
 
 export async function listProjects(userId: number, filters: ListProjectsFilters = {}) {
-  return prisma.project.findMany({
-    where: {
-      userId,
-      ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.priority ? { priority: filters.priority } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 20;
+  const where = {
+    userId,
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.priority ? { priority: filters.priority } : {}),
+  };
+
+  const [projects, total] = await Promise.all([
+    prisma.project.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.project.count({ where }),
+  ]);
+
+  return { projects, pagination: buildPagination(page, limit, total) };
 }
 
 async function findOwnedProject(userId: number, projectId: number) {
@@ -105,6 +119,55 @@ async function findOwnedTask(userId: number, projectId: number, taskId: number) 
 export async function updateTask(userId: number, projectId: number, taskId: number, title: string) {
   await findOwnedTask(userId, projectId, taskId);
   return prisma.projectTask.update({ where: { id: taskId }, data: { title } });
+}
+
+interface PageInput {
+  title?: string | null;
+  content?: string;
+}
+
+export async function listPages(userId: number, projectId: number) {
+  await findOwnedProject(userId, projectId);
+  return prisma.projectPage.findMany({ where: { projectId }, orderBy: { order: "asc" } });
+}
+
+export async function addPage(userId: number, projectId: number, input: PageInput) {
+  await findOwnedProject(userId, projectId);
+  const last = await prisma.projectPage.findFirst({ where: { projectId }, orderBy: { order: "desc" } });
+  return prisma.projectPage.create({
+    data: {
+      projectId,
+      title: input.title?.trim() || "Página sin título",
+      content: input.content ?? "",
+      order: (last?.order ?? -1) + 1,
+    },
+  });
+}
+
+async function findOwnedPage(userId: number, projectId: number, pageId: number) {
+  await findOwnedProject(userId, projectId);
+  const page = await prisma.projectPage.findUnique({ where: { id: pageId } });
+  if (!page || page.projectId !== projectId) {
+    throw new NotFoundError("Página no encontrada");
+  }
+  return page;
+}
+
+export async function updatePage(userId: number, projectId: number, pageId: number, input: PageInput & { order?: number }) {
+  await findOwnedPage(userId, projectId, pageId);
+  return prisma.projectPage.update({
+    where: { id: pageId },
+    data: {
+      ...(input.title !== undefined ? { title: input.title?.trim() || "Página sin título" } : {}),
+      ...(input.content !== undefined ? { content: input.content } : {}),
+      ...(input.order !== undefined ? { order: input.order } : {}),
+    },
+  });
+}
+
+export async function deletePage(userId: number, projectId: number, pageId: number) {
+  await findOwnedPage(userId, projectId, pageId);
+  await prisma.projectPage.delete({ where: { id: pageId } });
 }
 
 export async function completeTask(userId: number, projectId: number, taskId: number) {

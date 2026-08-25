@@ -3,6 +3,7 @@ import {
   updateTransactionSchema,
   listTransactionsQuerySchema,
   createSavingsGoalSchema,
+  contributeSchema,
 } from "../../../src/validators/financeValidators";
 
 describe("financeValidators", () => {
@@ -90,6 +91,44 @@ describe("financeValidators", () => {
         category: "savings-vacation",
       });
       expect(error).toBeDefined();
+    });
+
+    it("aplica stepAmount=100 por defecto", () => {
+      const { value } = createSavingsGoalSchema.validate({
+        name: "Vacaciones",
+        targetAmount: 500,
+        category: "savings-vacation",
+      });
+      expect(value.stepAmount).toBe(100);
+    });
+
+    it("acepta un stepAmount custom", () => {
+      const { value, error } = createSavingsGoalSchema.validate({
+        name: "Vacaciones",
+        targetAmount: 500,
+        category: "savings-vacation",
+        stepAmount: 50,
+      });
+      expect(error).toBeUndefined();
+      expect(value.stepAmount).toBe(50);
+    });
+  });
+
+  describe("contributeSchema", () => {
+    it("acepta un amount positivo (aportar)", () => {
+      expect(contributeSchema.validate({ amount: 100 }).error).toBeUndefined();
+    });
+
+    it("acepta un amount negativo (retirar/corregir)", () => {
+      expect(contributeSchema.validate({ amount: -50 }).error).toBeUndefined();
+    });
+
+    it("rechaza amount=0", () => {
+      expect(contributeSchema.validate({ amount: 0 }).error).toBeDefined();
+    });
+
+    it("requiere el campo amount", () => {
+      expect(contributeSchema.validate({}).error).toBeDefined();
     });
   });
 });

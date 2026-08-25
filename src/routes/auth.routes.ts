@@ -1,7 +1,8 @@
 import { Router } from "express";
 import * as authController from "../controllers/authController";
+import { authMiddleware } from "../middlewares/authMiddleware";
 import { validate } from "../middlewares/validation";
-import { registerSchema, loginSchema, refreshSchema } from "../validators/authValidators";
+import { registerSchema, loginSchema, refreshSchema, updateProfileSchema } from "../validators/authValidators";
 
 const router = Router();
 
@@ -70,5 +71,24 @@ router.post("/login", validate(loginSchema), authController.login);
  *       401: { description: Refresh token inválido o expirado }
  */
 router.post("/refresh", validate(refreshSchema), authController.refresh);
+
+/**
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Perfil del usuario autenticado
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ id, email, name, timezone }" }
+ *   put:
+ *     tags: [Auth]
+ *     summary: Actualizar nombre y/o timezone (zona IANA, ej. 'Europe/Madrid')
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Perfil actualizado }
+ */
+router.get("/me", authMiddleware, authController.getProfile);
+router.put("/me", authMiddleware, validate(updateProfileSchema), authController.updateProfile);
 
 export default router;

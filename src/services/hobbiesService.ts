@@ -1,4 +1,5 @@
 import { prisma } from "../config/database";
+import { buildPagination } from "../utils/pagination";
 import { ForbiddenError, NotFoundError } from "../utils/errorHandler";
 
 interface CreateHobbyInput {
@@ -18,12 +19,22 @@ export async function createHobby(userId: number, input: CreateHobbyInput) {
   });
 }
 
-export async function listHobbies(userId: number) {
-  return prisma.hobby.findMany({ where: { userId }, orderBy: { createdAt: "desc" } });
+export async function listHobbies(userId: number, page = 1, limit = 20) {
+  const where = { userId };
+  const [hobbies, total] = await Promise.all([
+    prisma.hobby.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.hobby.count({ where }),
+  ]);
+  return { hobbies, pagination: buildPagination(page, limit, total) };
 }
 
-export async function listByCategory(userId: number, category: string) {
-  return prisma.hobby.findMany({ where: { userId, category }, orderBy: { createdAt: "desc" } });
+export async function listByCategory(userId: number, category: string, page = 1, limit = 20) {
+  const where = { userId, category };
+  const [hobbies, total] = await Promise.all([
+    prisma.hobby.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.hobby.count({ where }),
+  ]);
+  return { hobbies, pagination: buildPagination(page, limit, total) };
 }
 
 async function findOwnedHobby(userId: number, hobbyId: number) {

@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { paginationQuerySchema } from "./pagination";
 
 const CATEGORIES = ["reading", "gaming", "music", "sports", "art"];
 
@@ -11,6 +12,8 @@ export const categoryParamSchema = Joi.object({
     .valid(...CATEGORIES)
     .required(),
 });
+
+export const listHobbiesQuerySchema = paginationQuerySchema;
 
 export const createHobbySchema = Joi.object({
   name: Joi.string().min(1).max(100).required(),

@@ -5,6 +5,7 @@ import { validate } from "../middlewares/validation";
 import {
   idParamSchema,
   categoryParamSchema,
+  listHobbiesQuerySchema,
   createHobbySchema,
   updateHobbySchema,
   createSessionSchema,
@@ -30,7 +31,7 @@ router.use(authMiddleware);
  *     responses:
  *       201: { description: Hobby creado }
  */
-router.get("/", hobbiesController.listHobbies);
+router.get("/", validate(listHobbiesQuerySchema, "query"), hobbiesController.listHobbies);
 router.post("/", validate(createHobbySchema), hobbiesController.createHobby);
 
 /**
@@ -51,6 +52,7 @@ router.post("/", validate(createHobbySchema), hobbiesController.createHobby);
 router.get(
   "/category/:category",
   validate(categoryParamSchema, "params"),
+  validate(listHobbiesQuerySchema, "query"),
   hobbiesController.listByCategory
 );
 

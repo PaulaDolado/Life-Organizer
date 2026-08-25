@@ -5,9 +5,13 @@ import * as goalsService from "../services/goalsService";
 export async function listGoals(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;
-    const { status } = req.query as { status?: "active" | "completed" | "all" };
-    const goals = await goalsService.listGoals(userId, status ?? "active");
-    res.json({ goals });
+    const { status, page, limit } = req.query as unknown as {
+      status?: "active" | "completed" | "expired" | "all";
+      page: number;
+      limit: number;
+    };
+    const result = await goalsService.listGoals(userId, status ?? "active", page, limit);
+    res.json(result);
   } catch (error) {
     next(error);
   }

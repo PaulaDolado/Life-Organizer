@@ -21,6 +21,11 @@ export function createApp(): Application {
 
   app.use(helmet());
   app.use(cors({ origin: env.cors.origin }));
+  // Las páginas de la libreta de un proyecto pueden llevar imágenes embebidas como data URL
+  // en el HTML, mucho más pesadas que el resto de payloads de la API — de ahí el límite propio
+  // para ese prefijo. body-parser no vuelve a leer el stream si el body ya viene parseado, así
+  // que el límite general de abajo no aplica dos veces sobre estas rutas.
+  app.use("/projects", express.json({ limit: "10mb" }));
   app.use(express.json({ limit: "100kb" }));
   app.use(
     morgan(env.isProduction ? "combined" : "dev", {

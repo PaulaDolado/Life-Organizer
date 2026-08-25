@@ -1,6 +1,7 @@
 import Joi from "joi";
 
 const TRANSACTION_TYPES = ["income", "expense"];
+const SAVINGS_GOAL_TYPES = ["ahorro", "inversion"];
 
 export const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
@@ -42,12 +43,28 @@ export const updateTransactionSchema = Joi.object({
   date: Joi.date().iso(),
 }).min(1);
 
+export const listSavingsGoalsQuerySchema = Joi.object({
+  type: Joi.string().valid(...SAVINGS_GOAL_TYPES),
+});
+
 export const createSavingsGoalSchema = Joi.object({
   name: Joi.string().min(1).max(100).required(),
+  type: Joi.string()
+    .valid(...SAVINGS_GOAL_TYPES)
+    .default("ahorro"),
   targetAmount: Joi.number().positive().precision(2).required(),
   category: Joi.string().min(1).max(50).required(),
+  // Valor de cada "casilla" en la vista de progreso (ej. 100€ por casilla).
+  stepAmount: Joi.number().positive().precision(2).default(100),
   deadline: Joi.date().iso().allow(null),
 }).options({ stripUnknown: true });
+
+export const contributeSchema = Joi.object({
+  // Positivo: aporta a la meta (crea un income). Negativo: retira/corrige (crea un expense).
+  amount: Joi.number().precision(2).invalid(0).required().messages({
+    "any.invalid": "amount no puede ser 0",
+  }),
+});
 
 export const analyticsQuerySchema = Joi.object({
   month: Joi.number().integer().min(1).max(12),

@@ -1,21 +1,19 @@
 export function Loading({ label = "Cargando..." }: { label?: string }) {
-  return <p className="feedback feedback--loading">{label}</p>;
+  return <p className="p-8 text-center text-sm text-muted-foreground">{label}</p>;
 }
 
 export function ErrorMessage({ message }: { message: string }) {
-  return <p className="feedback feedback--error">⚠️ {message}</p>;
+  return (
+    <p className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+      ⚠️ {message}
+    </p>
+  );
 }
 
 export function EmptyState({ message }: { message: string }) {
-  return <p className="feedback feedback--empty">{message}</p>;
-}
-
-export function ProgressBar({ percent }: { percent: number }) {
-  const clamped = Math.max(0, Math.min(100, percent));
   return (
-    <div className="progress-bar" role="progressbar" aria-valuenow={clamped} aria-valuemin={0} aria-valuemax={100}>
-      <div className="progress-bar__fill" style={{ width: `${clamped}%` }} />
-      <span className="progress-bar__label">{clamped}%</span>
-    </div>
+    <p className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+      {message}
+    </p>
   );
 }

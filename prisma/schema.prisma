@@ -19,14 +19,15 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  events       Event[]
-  goals        Goal[]
-  goalProgress GoalProgress[]
-  transactions Transaction[]
-  savingsGoals SavingsGoal[]
-  projects     Project[]
-  hobbies      Hobby[]
+  events        Event[]
+  goals         Goal[]
+  goalProgress  GoalProgress[]
+  transactions  Transaction[]
+  savingsGoals  SavingsGoal[]
+  projects      Project[]
+  hobbies       Hobby[]
   hobbySessions HobbySession[]
+  notifications Notification[]
 }
 
 model Event {
@@ -63,11 +64,20 @@ model Goal {
   updatedAt    DateTime @updatedAt
   periodStart  DateTime
   periodEnd    DateTime
+  // Se pone a true cuando pasa `periodEnd` sin completarse (la archiva el scheduler de
+  // src/jobs/goalExpiryScheduler.ts). Distinto de `completed`: una meta puede expirar sin
+  // completarse, o completarse antes de expirar.
+  expired      Boolean  @default(false)
+  // Si es true (default), al expirar se crea automáticamente la meta del siguiente periodo
+  // con los mismos datos (título, targetValue, etc.) y progreso en cero — así no hay que
+  // recrear a mano "ejercicio 5 días" cada semana.
+  autoRenew    Boolean  @default(true)
 
   user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   progress GoalProgress[]
 
   @@index([userId])
+  @@index([periodEnd, expired])
 }
 
 model GoalProgress {
@@ -104,9 +114,15 @@ model SavingsGoal {
   id            Int       @id @default(autoincrement())
   userId        Int
   name          String // "Ahorro Vacaciones", "Fondo Emergencia"
+  type          String    @default("ahorro") // "ahorro" | "inversion" — puramente de agrupación/visualización
   targetAmount  Decimal   @db.Decimal(12, 2)
   currentAmount Decimal   @default(0) @db.Decimal(12, 2)
   category      String // para filtrar transacciones que cuenten
+  // Valor de cada "casilla" en la vista de progreso (ej. 100€ por casilla). Puramente de
+  // presentación: no afecta al cálculo de currentAmount (que sigue siendo la suma de
+  // transacciones de `category`) — solo determina cuántas casillas se dibujan y cuánto
+  // aporta cada clic.
+  stepAmount    Decimal   @default(100) @db.Decimal(12, 2)
   deadline      DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -129,8 +145,26 @@ model Project {
 
   user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks ProjectTask[]
+  pages ProjectPage[]
 
   @@index([userId])
+}
+
+// Páginas de la "libreta" de un proyecto: contenido enriquecido (listas, imágenes embebidas
+// como data URL, negrita/cursiva...) que el dashboard edita como HTML, al estilo de un
+// documento de texto. Distinto de ProjectTask (los "apuntes rápidos" tipo checklist).
+model ProjectPage {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  title     String   @default("Página sin título")
+  content   String   @default("") @db.Text
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, order])
 }
 
 model ProjectTask {
@@ -174,4 +208,24 @@ model HobbySession {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([hobbyId, date])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String // "event_reminder" | "goal_at_risk"
+  title     String
+  message   String
+  relatedId Int? // eventId (series) o goalId, según `type`
+  // Para "event_reminder": el startTime de la ocurrencia concreta que generó el aviso
+  // (los eventos recurrentes no materializan una fila por ocurrencia — ver utils/recurrence.ts —
+  // así que esto es lo que distingue un recordatorio de "el lunes" de uno de "el martes siguiente").
+  occurrenceAt DateTime?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([type, relatedId, occurrenceAt])
 }

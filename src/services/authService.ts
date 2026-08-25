@@ -7,6 +7,7 @@ interface RegisterInput {
   email: string;
   password: string;
   name: string;
+  timezone?: string;
 }
 
 interface LoginInput {
@@ -30,11 +31,16 @@ export async function register(input: RegisterInput) {
 
   const hashedPassword = await hashPassword(input.password);
   const user = await prisma.user.create({
-    data: { email: input.email, password: hashedPassword, name: input.name },
+    data: {
+      email: input.email,
+      password: hashedPassword,
+      name: input.name,
+      ...(input.timezone ? { timezone: input.timezone } : {}),
+    },
   });
 
   const tokens = buildTokens(user);
-  return { ...tokens, user: { id: user.id, email: user.email, name: user.name } };
+  return { ...tokens, user: { id: user.id, email: user.email, name: user.name, timezone: user.timezone } };
 }
 
 export async function login(input: LoginInput) {
@@ -49,7 +55,31 @@ export async function login(input: LoginInput) {
   }
 
   const tokens = buildTokens(user);
-  return { ...tokens, user: { id: user.id, email: user.email, name: user.name } };
+  return { ...tokens, user: { id: user.id, email: user.email, name: user.name, timezone: user.timezone } };
+}
+
+export async function getProfile(userId: number) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new UnauthorizedError("Usuario no encontrado");
+  }
+  return { id: user.id, email: user.email, name: user.name, timezone: user.timezone };
+}
+
+interface UpdateProfileInput {
+  name?: string;
+  timezone?: string;
+}
+
+export async function updateProfile(userId: number, input: UpdateProfileInput) {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
+    },
+  });
+  return { id: user.id, email: user.email, name: user.name, timezone: user.timezone };
 }
 
 export async function refresh(refreshToken: string) {

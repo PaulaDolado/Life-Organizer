@@ -1,17 +1,19 @@
 import { useState } from "react";
-import { Layout, Tab } from "../components/Layout";
-import { AgendaWeekView } from "../components/AgendaWeekView";
-import { GoalsList } from "../components/GoalsList";
-import { FinanceSummary } from "../components/FinanceSummary";
-import { ProjectsList } from "../components/ProjectsList";
-import { HobbiesList } from "../components/HobbiesList";
+import { AppShell, Tab } from "../components/AppShell";
+import { AgendaPage } from "./AgendaPage";
+import { MetasPage } from "./MetasPage";
+import { FinanzasPage } from "./FinanzasPage";
+import { MetasAhorroPage } from "./MetasAhorroPage";
+import { ProyectosPage } from "./ProyectosPage";
+import { HobbiesPage } from "./HobbiesPage";
 
 const TAB_CONTENT: Record<Tab, () => JSX.Element> = {
-  agenda: AgendaWeekView,
-  goals: GoalsList,
-  finance: FinanceSummary,
-  projects: ProjectsList,
-  hobbies: HobbiesList,
+  agenda: AgendaPage,
+  metas: MetasPage,
+  finanzas: FinanzasPage,
+  "finanzas-ahorro": MetasAhorroPage,
+  proyectos: ProyectosPage,
+  hobbies: HobbiesPage,
 };
 
 export function DashboardPage() {
@@ -19,8 +21,8 @@ export function DashboardPage() {
   const ActiveComponent = TAB_CONTENT[activeTab];
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+    <AppShell activeTab={activeTab} onTabChange={setActiveTab}>
       <ActiveComponent />
-    </Layout>
+    </AppShell>
   );
 }

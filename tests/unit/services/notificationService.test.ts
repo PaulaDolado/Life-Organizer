@@ -1,0 +1,224 @@
+jest.mock("../../../src/config/database", () => ({
+  prisma: {
+    event: { findMany: jest.fn() },
+    goal: { findMany: jest.fn() },
+    notification: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+      createMany: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+      delete: jest.fn(),
+    },
+  },
+}));
+
+import { prisma } from "../../../src/config/database";
+import * as notificationService from "../../../src/services/notificationService";
+import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
+
+const prismaMock = prisma as unknown as {
+  event: { findMany: jest.Mock };
+  goal: { findMany: jest.Mock };
+  notification: {
+    findMany: jest.Mock;
+    findUnique: jest.Mock;
+    count: jest.Mock;
+    createMany: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
+    delete: jest.Mock;
+  };
+};
+
+describe("notificationService", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe("createEventReminders", () => {
+    const now = new Date("2026-08-24T10:00:00.000Z");
+
+    it("crea un recordatorio para un evento no-recurrente que empieza en ~30 minutos", async () => {
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([
+          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z") },
+        ])
+        .mockResolvedValueOnce([]); // sin plantillas recurrentes
+      prismaMock.notification.findMany.mockResolvedValue([]); // sin duplicados previos
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            userId: 7,
+            type: "event_reminder",
+            relatedId: 1,
+            occurrenceAt: new Date("2026-08-24T10:30:00.000Z"),
+          }),
+        ],
+      });
+    });
+
+    it("no duplica un recordatorio ya creado para la misma ocurrencia", async () => {
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([
+          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z") },
+        ])
+        .mockResolvedValueOnce([]);
+      prismaMock.notification.findMany.mockResolvedValue([
+        { relatedId: 1, occurrenceAt: new Date("2026-08-24T10:30:00.000Z") },
+      ]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("crea un recordatorio para la ocurrencia virtual de un evento recurrente", async () => {
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([]) // sin eventos no-recurrentes en la ventana
+        .mockResolvedValueOnce([
+          {
+            id: 9,
+            userId: 3,
+            title: "Gimnasio semanal",
+            isRecurring: true,
+            recurringPattern: "weekly",
+            startTime: new Date("2026-08-17T10:30:00.000Z"), // semana anterior
+            endTime: new Date("2026-08-17T11:30:00.000Z"),
+          },
+        ]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(1);
+      const dataArg = prismaMock.notification.createMany.mock.calls[0][0].data[0];
+      expect(dataArg.relatedId).toBe(9);
+      expect(dataArg.occurrenceAt.toISOString()).toBe("2026-08-24T10:30:00.000Z"); // +1 semana
+    });
+
+    it("no crea nada si no hay eventos ni plantillas en la ventana", async () => {
+      prismaMock.event.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.findMany).not.toHaveBeenCalled(); // corta antes de consultar duplicados
+    });
+  });
+
+  describe("createGoalRiskAlerts", () => {
+    const now = new Date(2026, 0, 16); // mitad de un periodo de enero
+
+    it("crea una alerta para una meta incompleta y en riesgo", async () => {
+      prismaMock.goal.findMany.mockResolvedValue([
+        {
+          id: 1,
+          userId: 5,
+          title: "Leer 30 días",
+          targetValue: 30,
+          currentValue: 1, // muy por detrás
+          completed: false,
+          periodStart: new Date(2026, 0, 1),
+          periodEnd: new Date(2026, 0, 31),
+        },
+      ]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createGoalRiskAlerts(now);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ userId: 5, type: "goal_at_risk", relatedId: 1 })],
+      });
+    });
+
+    it("no crea una alerta duplicada si ya hay una sin leer para esa meta", async () => {
+      const atRiskGoal = {
+        id: 1,
+        userId: 5,
+        title: "Leer 30 días",
+        targetValue: 30,
+        currentValue: 1,
+        completed: false,
+        periodStart: new Date(2026, 0, 1),
+        periodEnd: new Date(2026, 0, 31),
+      };
+      prismaMock.goal.findMany.mockResolvedValue([atRiskGoal]);
+      prismaMock.notification.findMany.mockResolvedValue([{ relatedId: 1 }]);
+
+      const created = await notificationService.createGoalRiskAlerts(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("no crea alertas para metas que van al ritmo esperado", async () => {
+      prismaMock.goal.findMany.mockResolvedValue([
+        {
+          id: 2,
+          userId: 5,
+          title: "Al día",
+          targetValue: 30,
+          currentValue: 15, // exactamente al ritmo esperado a mitad de mes
+          completed: false,
+          periodStart: new Date(2026, 0, 1),
+          periodEnd: new Date(2026, 0, 31),
+        },
+      ]);
+
+      const created = await notificationService.createGoalRiskAlerts(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.findMany).not.toHaveBeenCalled(); // corta antes de buscar duplicados
+    });
+  });
+
+  describe("listNotifications / getUnreadCount", () => {
+    it("filtra por read:false cuando unreadOnly=true", async () => {
+      prismaMock.notification.findMany.mockResolvedValue([]);
+      prismaMock.notification.count.mockResolvedValue(0);
+
+      await notificationService.listNotifications(1, { unreadOnly: true, page: 1, limit: 20 });
+
+      expect(prismaMock.notification.findMany.mock.calls[0][0].where).toEqual({ userId: 1, read: false });
+    });
+
+    it("getUnreadCount cuenta solo las no leídas del usuario", async () => {
+      prismaMock.notification.count.mockResolvedValue(4);
+
+      const result = await notificationService.getUnreadCount(1);
+
+      expect(result).toEqual({ unreadCount: 4 });
+      expect(prismaMock.notification.count).toHaveBeenCalledWith({ where: { userId: 1, read: false } });
+    });
+  });
+
+  describe("markAsRead / deleteNotification (ownership)", () => {
+    it("lanza NotFoundError si la notificación no existe", async () => {
+      prismaMock.notification.findUnique.mockResolvedValue(null);
+      await expect(notificationService.markAsRead(1, 999)).rejects.toThrow(NotFoundError);
+    });
+
+    it("lanza ForbiddenError si la notificación es de otro usuario", async () => {
+      prismaMock.notification.findUnique.mockResolvedValue({ id: 1, userId: 2 });
+      await expect(notificationService.deleteNotification(1, 1)).rejects.toThrow(ForbiddenError);
+    });
+
+    it("marca como leída una notificación propia", async () => {
+      prismaMock.notification.findUnique.mockResolvedValue({ id: 1, userId: 1, read: false });
+      prismaMock.notification.update.mockResolvedValue({ id: 1, userId: 1, read: true });
+
+      const result = await notificationService.markAsRead(1, 1);
+
+      expect(result.read).toBe(true);
+    });
+  });
+});

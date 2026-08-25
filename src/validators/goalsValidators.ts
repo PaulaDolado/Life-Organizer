@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { paginationQuerySchema } from "./pagination";
 
 const PERIODS = ["weekly", "monthly"];
 
@@ -7,8 +8,8 @@ export const idParamSchema = Joi.object({
 });
 
 export const listGoalsQuerySchema = Joi.object({
-  status: Joi.string().valid("active", "completed", "all").default("active"),
-});
+  status: Joi.string().valid("active", "completed", "expired", "all").default("active"),
+}).concat(paginationQuerySchema);
 
 export const createGoalSchema = Joi.object({
   title: Joi.string().min(1).max(200).required(),
@@ -22,6 +23,8 @@ export const createGoalSchema = Joi.object({
   periodEnd: Joi.date().iso().greater(Joi.ref("periodStart")).messages({
     "date.greater": "periodEnd debe ser posterior a periodStart",
   }),
+  // Si es true (default), al terminar el periodo se crea sola la meta del siguiente.
+  autoRenew: Joi.boolean().default(true),
 }).options({ stripUnknown: true });
 
 export const updateGoalSchema = Joi.object({
@@ -31,6 +34,7 @@ export const updateGoalSchema = Joi.object({
   bonusPoints: Joi.number().integer().min(0),
   periodStart: Joi.date().iso(),
   periodEnd: Joi.date().iso(),
+  autoRenew: Joi.boolean(),
 }).min(1);
 
 export const registerProgressSchema = Joi.object({

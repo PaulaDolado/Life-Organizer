@@ -1,4 +1,9 @@
-import { createGoalSchema, updateGoalSchema, registerProgressSchema } from "../../../src/validators/goalsValidators";
+import {
+  createGoalSchema,
+  updateGoalSchema,
+  registerProgressSchema,
+  listGoalsQuerySchema,
+} from "../../../src/validators/goalsValidators";
 
 describe("goalsValidators", () => {
   describe("createGoalSchema", () => {
@@ -48,6 +53,22 @@ describe("goalsValidators", () => {
       });
       expect(error).toBeDefined();
     });
+
+    it("aplica autoRenew=true por defecto", () => {
+      const { value } = createGoalSchema.validate({ title: "Ejercicio", period: "weekly", targetValue: 5 });
+      expect(value.autoRenew).toBe(true);
+    });
+
+    it("acepta autoRenew=false explícito", () => {
+      const { value, error } = createGoalSchema.validate({
+        title: "Meta puntual",
+        period: "monthly",
+        targetValue: 5,
+        autoRenew: false,
+      });
+      expect(error).toBeUndefined();
+      expect(value.autoRenew).toBe(false);
+    });
   });
 
   describe("updateGoalSchema", () => {
@@ -78,6 +99,18 @@ describe("goalsValidators", () => {
 
     it("requiere el campo value", () => {
       const { error } = registerProgressSchema.validate({ note: "sin value" });
+      expect(error).toBeDefined();
+    });
+  });
+
+  describe("listGoalsQuerySchema", () => {
+    it("acepta status=expired", () => {
+      const { error } = listGoalsQuerySchema.validate({ status: "expired" });
+      expect(error).toBeUndefined();
+    });
+
+    it("rechaza un status no soportado", () => {
+      const { error } = listGoalsQuerySchema.validate({ status: "archivadas" });
       expect(error).toBeDefined();
     });
   });

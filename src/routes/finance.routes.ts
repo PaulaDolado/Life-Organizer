@@ -10,6 +10,8 @@ import {
   createTransactionSchema,
   updateTransactionSchema,
   createSavingsGoalSchema,
+  listSavingsGoalsQuerySchema,
+  contributeSchema,
   analyticsQuerySchema,
 } from "../validators/financeValidators";
 
@@ -131,11 +133,58 @@ router.delete(
  *     responses:
  *       201: { description: Meta de ahorro creada }
  */
-router.get("/savings-goals", financeController.listSavingsGoals);
+router.get(
+  "/savings-goals",
+  validate(listSavingsGoalsQuerySchema, "query"),
+  financeController.listSavingsGoals
+);
 router.post(
   "/savings-goals",
   validate(createSavingsGoalSchema),
   financeController.createSavingsGoal
+);
+
+/**
+ * @openapi
+ * /finance/savings-goals/{id}:
+ *   delete:
+ *     tags: [Finance]
+ *     summary: Eliminar meta de ahorro
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Meta de ahorro eliminada }
+ */
+router.delete(
+  "/savings-goals/:id",
+  validate(idParamSchema, "params"),
+  financeController.deleteSavingsGoal
+);
+
+/**
+ * @openapi
+ * /finance/savings-goals/{id}/contribute:
+ *   post:
+ *     tags: [Finance]
+ *     summary: Asignar (o retirar) dinero a una meta de ahorro por "casillas"
+ *     description: Crea una transacción real (income si amount>0, expense si amount<0) etiquetada con la categoría de la meta. Pensado para el grid de casillas del dashboard — cada clic llama este endpoint con ±stepAmount.
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount: { type: number, description: "Positivo para aportar, negativo para retirar/corregir" }
+ *     responses:
+ *       201: { description: Meta de ahorro con currentAmount/progressPercent actualizados }
+ */
+router.post(
+  "/savings-goals/:id/contribute",
+  validate(idParamSchema, "params"),
+  validate(contributeSchema),
+  financeController.contributeToSavingsGoal
 );
 
 /**

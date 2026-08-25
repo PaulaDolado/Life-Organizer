@@ -24,7 +24,7 @@ router.use(authMiddleware);
  *     parameters:
  *       - in: query
  *         name: status
- *         schema: { type: string, enum: [active, completed, all], default: active }
+ *         schema: { type: string, enum: [active, completed, expired, all], default: active }
  *     responses:
  *       200: { description: Lista de metas }
  *   post:

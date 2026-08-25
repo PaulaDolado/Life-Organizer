@@ -78,7 +78,8 @@ export async function deleteTransaction(req: AuthRequest, res: Response, next: N
 export async function listSavingsGoals(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;
-    const goals = await financeService.listSavingsGoals(userId);
+    const { type } = req.query as unknown as { type?: string };
+    const goals = await financeService.listSavingsGoals(userId, { type });
     res.json({ savingsGoals: goals });
   } catch (error) {
     next(error);
@@ -89,6 +90,28 @@ export async function createSavingsGoal(req: AuthRequest, res: Response, next: N
   try {
     const userId = req.userId as number;
     const goal = await financeService.createSavingsGoal(userId, req.body);
+    res.status(201).json(goal);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteSavingsGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    await financeService.deleteSavingsGoal(userId, id);
+    res.json({ message: "Meta de ahorro eliminada" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function contributeToSavingsGoal(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const goal = await financeService.contributeToSavingsGoal(userId, id, req.body.amount);
     res.status(201).json(goal);
   } catch (error) {
     next(error);

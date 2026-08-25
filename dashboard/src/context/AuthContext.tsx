@@ -15,7 +15,7 @@ interface AuthContextValue {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  register: (email: string, password: string, name: string, timezone?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -67,11 +67,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name: string) => {
+  const register = useCallback(async (email: string, password: string, name: string, timezone?: string) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.post<AuthResponse>("/auth/register", { email, password, name });
+      const result = await api.post<AuthResponse>("/auth/register", { email, password, name, timezone });
       persist(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrarse");

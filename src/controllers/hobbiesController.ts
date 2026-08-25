@@ -5,8 +5,9 @@ import * as hobbiesService from "../services/hobbiesService";
 export async function listHobbies(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;
-    const hobbies = await hobbiesService.listHobbies(userId);
-    res.json({ hobbies });
+    const { page, limit } = req.query as unknown as { page: number; limit: number };
+    const result = await hobbiesService.listHobbies(userId, page, limit);
+    res.json(result);
   } catch (error) {
     next(error);
   }
@@ -16,8 +17,9 @@ export async function listByCategory(req: AuthRequest, res: Response, next: Next
   try {
     const userId = req.userId as number;
     const { category } = req.params;
-    const hobbies = await hobbiesService.listByCategory(userId, category);
-    res.json({ category, hobbies });
+    const { page, limit } = req.query as unknown as { page: number; limit: number };
+    const result = await hobbiesService.listByCategory(userId, category, page, limit);
+    res.json({ category, ...result });
   } catch (error) {
     next(error);
   }

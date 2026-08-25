@@ -86,6 +86,56 @@ describe("Agenda Endpoints", () => {
     });
   });
 
+  describe("Eventos recurrentes", () => {
+    it("una plantilla weekly aparece en semanas futuras aunque su startTime original ya haya pasado", async () => {
+      // 2026-08-03 es lunes; la creamos como recurrente semanal.
+      await request(app)
+        .post("/agenda/events")
+        .set(authed())
+        .send({
+          title: "Gimnasio semanal",
+          type: "gym",
+          startTime: "2026-08-03T18:00:00.000Z",
+          endTime: "2026-08-03T19:00:00.000Z",
+          isRecurring: true,
+          recurringPattern: "weekly",
+        });
+
+      // Consultamos 3 semanas después: no hay ninguna fila real ahí, solo la ocurrencia virtual.
+      const response = await request(app).get("/agenda/week/2026-08-24").set(authed());
+
+      expect(response.status).toBe(200);
+      expect(response.body.events).toHaveLength(1);
+      expect(response.body.events[0].isRecurringInstance).toBe(true);
+      expect(response.body.events[0].startTime).toBe("2026-08-24T18:00:00.000Z");
+    });
+  });
+
+  describe("Paginación", () => {
+    it("GET /agenda/day acepta page/limit y reporta el total real", async () => {
+      for (let hour = 8; hour < 12; hour += 1) {
+        await request(app)
+          .post("/agenda/events")
+          .set(authed())
+          .send({
+            title: `Bloque ${hour}h`,
+            type: "work",
+            startTime: `2026-08-24T${String(hour).padStart(2, "0")}:00:00.000Z`,
+            endTime: `2026-08-24T${String(hour).padStart(2, "0")}:30:00.000Z`,
+          });
+      }
+
+      const response = await request(app)
+        .get("/agenda/day/2026-08-24")
+        .query({ page: 2, limit: 2 })
+        .set(authed());
+
+      expect(response.status).toBe(200);
+      expect(response.body.events).toHaveLength(2);
+      expect(response.body.pagination).toEqual({ page: 2, limit: 2, total: 4, pages: 2 });
+    });
+  });
+
   describe("PUT/DELETE /agenda/events/:id", () => {
     it("debería editar y luego eliminar un evento propio", async () => {
       const created = await request(app)

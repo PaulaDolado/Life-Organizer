@@ -161,8 +161,10 @@ export async function deleteTransaction(userId: number, id: number) {
 
 interface SavingsGoalInput {
   name: string;
+  type?: string; // "ahorro" | "inversion"
   targetAmount: number;
   category: string;
+  stepAmount?: number;
   deadline?: string | Date | null;
 }
 
@@ -180,8 +182,10 @@ async function computeSavingsProgress(userId: number, category: string) {
   return Math.max(0, toNumber(incomeAgg._sum.amount) - toNumber(expenseAgg._sum.amount));
 }
 
-export async function listSavingsGoals(userId: number) {
-  const goals = await prisma.savingsGoal.findMany({ where: { userId } });
+export async function listSavingsGoals(userId: number, filters: { type?: string } = {}) {
+  const goals = await prisma.savingsGoal.findMany({
+    where: { userId, ...(filters.type ? { type: filters.type } : {}) },
+  });
   if (goals.length === 0) return [];
 
   // Una sola consulta agrupada por categoría (en vez de 2 aggregate por cada meta de ahorro).
@@ -215,13 +219,56 @@ export async function createSavingsGoal(userId: number, input: SavingsGoalInput)
     data: {
       userId,
       name: input.name,
+      type: input.type ?? "ahorro",
       targetAmount: input.targetAmount,
       category: input.category,
+      stepAmount: input.stepAmount ?? 100,
       deadline: input.deadline ? new Date(input.deadline) : null,
     },
   });
   const currentAmount = await computeSavingsProgress(userId, goal.category);
   return { ...goal, currentAmount };
+}
+
+async function findOwnedSavingsGoal(userId: number, savingsGoalId: number) {
+  const goal = await prisma.savingsGoal.findUnique({ where: { id: savingsGoalId } });
+  if (!goal) throw new NotFoundError("Meta de ahorro no encontrada");
+  if (goal.userId !== userId) throw new ForbiddenError("No autorizado");
+  return goal;
+}
+
+export async function deleteSavingsGoal(userId: number, savingsGoalId: number) {
+  await findOwnedSavingsGoal(userId, savingsGoalId);
+  await prisma.savingsGoal.delete({ where: { id: savingsGoalId } });
+}
+
+/**
+ * "Casilla" clicada en el dashboard: cada clic representa asignar (o retirar) un múltiplo de
+ * `stepAmount` a la meta. No se guarda un contador aparte — se traduce en una transacción real
+ * (income si `amount` es positivo, expense si es negativo) etiquetada con la categoría de la
+ * meta, así el balance mensual/anual y el progreso de la meta se mantienen consistentes con la
+ * misma fuente de verdad (`Transaction`), sin un segundo lugar donde el dinero "vive".
+ */
+export async function contributeToSavingsGoal(userId: number, savingsGoalId: number, amount: number) {
+  const goal = await findOwnedSavingsGoal(userId, savingsGoalId);
+
+  await prisma.transaction.create({
+    data: {
+      userId,
+      type: amount > 0 ? "income" : "expense",
+      amount: Math.abs(amount),
+      category: goal.category,
+      description: `Aporte a meta de ahorro: ${goal.name}`,
+    },
+  });
+
+  const currentAmount = await computeSavingsProgress(userId, goal.category);
+  const targetAmount = toNumber(goal.targetAmount);
+  return {
+    ...goal,
+    currentAmount,
+    progressPercent: targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) : 0,
+  };
 }
 
 export async function getAnalytics(userId: number, month?: number, year?: number) {
