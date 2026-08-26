@@ -44,6 +44,25 @@ export interface AgendaResponse {
   pagination: Pagination;
 }
 
+export interface Note {
+  id: number;
+  content: string;
+  checked: boolean;
+  createdAt: string;
+}
+
+export type TaskStatus = "todo" | "in_progress" | "done";
+export type TaskPriority = "low" | "medium" | "high";
+
+export interface Task {
+  id: number;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  order: number;
+}
+
 export type GoalStatus = "active" | "completed" | "expired" | "all";
 
 export interface Goal {
@@ -100,6 +119,7 @@ export interface SavingsGoal {
   stepAmount: number;
   category: string;
   deadline: string | null;
+  createdAt: string;
 }
 
 export interface ProjectTask {

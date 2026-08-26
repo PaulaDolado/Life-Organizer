@@ -12,6 +12,28 @@ const TABS: { value: FilterTab; label: string }[] = [
   ...SAVINGS_GOAL_TYPES.map((t) => ({ value: t, label: SAVINGS_GOAL_TYPE_LABELS[t] })),
 ];
 
+// Diferencia en días de calendario entre dos fechas — igual criterio que en MetasPage
+// (computeGoalRisk del backend), para que "al ritmo" signifique lo mismo en toda la app.
+function calendarDaysBetween(from: Date, to: Date): number {
+  const a = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const b = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86_400_000);
+}
+
+// Verde si va al ritmo necesario para llegar al objetivo antes de la fecha límite (o si no
+// tiene fecha límite: sin plazo no hay ritmo que evaluar). Amarillo si va por detrás.
+function paceStatus(goal: SavingsGoal): "green" | "yellow" {
+  if (goal.progressPercent >= 100 || !goal.deadline) return "green";
+  const start = new Date(goal.createdAt);
+  const end = new Date(goal.deadline);
+  const now = new Date();
+  const daysTotal = Math.max(1, calendarDaysBetween(start, end));
+  const daysElapsed = Math.min(daysTotal, Math.max(0, calendarDaysBetween(start, now)));
+  if (daysElapsed <= 0) return "green";
+  const expectedPercent = (daysElapsed / daysTotal) * 100;
+  return goal.progressPercent >= expectedPercent * 0.8 ? "green" : "yellow";
+}
+
 export function MetasAhorroPage() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<FilterTab>("all");
@@ -19,6 +41,18 @@ export function MetasAhorroPage() {
     () => api.get<{ savingsGoals: SavingsGoal[] }>(`/finance/savings-goals${tab === "all" ? "" : `?type=${tab}`}`),
     [tab]
   );
+
+  // Panel de progreso: siempre sobre todas las metas, independientemente de la pestaña
+  // seleccionada abajo — igual que el de Objetivos, para que no desaparezca al filtrar.
+  const { data: allData, reload: reloadAll } = useFetch(
+    () => api.get<{ savingsGoals: SavingsGoal[] }>("/finance/savings-goals"),
+    []
+  );
+
+  const reloadBoth = () => {
+    reload();
+    reloadAll();
+  };
 
   return (
     <>
@@ -32,13 +66,15 @@ export function MetasAhorroPage() {
         }
       />
 
+      <SavingsProgressOverviewPanel goals={allData?.savingsGoals ?? []} />
+
       {open && (
         <NewSavingsGoalForm
           defaultType={tab === "all" ? "ahorro" : tab}
           onSubmit={async (input) => {
             await api.post("/finance/savings-goals", input);
             setOpen(false);
-            reload();
+            reloadBoth();
           }}
         />
       )}
@@ -68,10 +104,50 @@ export function MetasAhorroPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {data?.savingsGoals.map((goal) => (
-            <SavingsGoalCard key={goal.id} goal={goal} onChanged={reload} />
+            <SavingsGoalCard key={goal.id} goal={goal} onChanged={reloadBoth} />
           ))}
         </div>
       )}
     </>
+  );
+}
+
+function SavingsProgressOverviewPanel({ goals }: { goals: SavingsGoal[] }) {
+  return (
+    <section className="mb-8 rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-soft)]">
+      <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">
+        Progreso de tus metas de ahorro e inversión
+      </h2>
+
+      {goals.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Todavía no tienes metas de ahorro ni de inversión.</p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {goals.map((goal) => {
+            const percent = goal.progressPercent;
+            const status = paceStatus(goal);
+            const barColor = status === "green" ? "bg-positive" : "bg-warning";
+            const textColor = status === "green" ? "text-positive" : "text-warning";
+
+            return (
+              <div key={goal.id} className="rounded-2xl border border-border bg-background p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium">
+                    {SAVINGS_GOAL_TYPE_LABELS[goal.type]} · {goal.name}
+                  </span>
+                  <span className={`shrink-0 font-serif text-lg ${textColor}`}>{percent}%</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                  <div className={`h-full transition-all ${barColor}`} style={{ width: `${percent}%` }} />
+                </div>
+                <p className={`mt-1.5 text-[11px] font-medium ${textColor}`}>
+                  {status === "green" ? "Al ritmo previsto" : "Por detrás del ritmo"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }

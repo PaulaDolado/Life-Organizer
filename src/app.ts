@@ -45,8 +45,8 @@ export function createApp(): Application {
 
   // Límite más estricto en auth para dificultar fuerza bruta sobre login/register.
   const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
+    windowMs: env.rateLimit.authWindowMs,
+    max: env.rateLimit.authMax,
     standardHeaders: true,
     legacyHeaders: false,
     skip: () => env.isTest,

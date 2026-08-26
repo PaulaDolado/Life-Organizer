@@ -28,6 +28,8 @@ model User {
   hobbies       Hobby[]
   hobbySessions HobbySession[]
   notifications Notification[]
+  tasks         Task[]
+  notes         Note[]
 }
 
 model Event {
@@ -208,6 +210,39 @@ model HobbySession {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([hobbyId, date])
+}
+
+// Planificador de tareas (submenú de Agenda): tablero kanban con tres columnas fijas.
+// `order` es un float para poder insertar una tarea entre otras dos sin tener que
+// renumerar el resto de la columna (orden = punto medio entre las tarjetas vecinas).
+model Task {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  title       String
+  description String?
+  status      String   @default("todo") // "todo" | "in_progress" | "done"
+  priority    String   @default("medium") // "low" | "medium" | "high"
+  order       Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+// Notas rápidas de la Agenda: apuntes sueltos sin fecha ni hora (recordatorios tipo post-it),
+// distintas de los Event — no ocupan bloque en el calendario, solo una lista simple.
+model Note {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  content   String
+  checked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Notification {

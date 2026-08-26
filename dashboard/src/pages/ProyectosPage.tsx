@@ -126,7 +126,7 @@ function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; 
   };
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div>
       <button onClick={onBack} className="mb-6 cursor-pointer text-sm text-muted-foreground hover:text-foreground">
         ← Volver a la galería
       </button>
@@ -147,8 +147,10 @@ function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; 
             </button>
           </div>
 
-          {/* Apuntes rápidos — lo primero que se ve al abrir la libreta */}
-          <section className="mt-8">
+          {/* Apuntes rápidos — lo primero que se ve al abrir la libreta. A la mitad del ancho:
+              son notas cortas tipo checklist, no necesitan estirarse a todo el ancho del cuaderno
+              como sí lo necesita el editor de Páginas. */}
+          <section className="mt-8 lg:max-w-[50%]">
             <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">Apuntes rápidos</h2>
 
             <form
@@ -228,6 +230,7 @@ function ProjectPages({ projectId }: { projectId: number }) {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [content, setContent] = useState("");
+  const [pageTitle, setPageTitle] = useState("");
   const [savingState, setSavingState] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -236,12 +239,14 @@ function ProjectPages({ projectId }: { projectId: number }) {
     if (selectedId === null && pages.length > 0) {
       setSelectedId(pages[0].id);
       setContent(pages[0].content);
+      setPageTitle(pages[0].title);
     }
   }, [pages, selectedId]);
 
   const selectPage = (page: ProjectPage) => {
     setSelectedId(page.id);
     setContent(page.content);
+    setPageTitle(page.title);
   };
 
   const savePage = (pageId: number, html: string) => {
@@ -253,11 +258,22 @@ function ProjectPages({ projectId }: { projectId: number }) {
     }, 600);
   };
 
+  // El título se guarda al perder el foco (no en cada tecla como el contenido): así no
+  // dispara una llamada por letra, y la pestaña de la página se actualiza en cuanto se confirma.
+  const saveTitle = async () => {
+    if (selectedId === null) return;
+    const trimmed = pageTitle.trim();
+    if (!trimmed) return;
+    await api.put(`/projects/${projectId}/pages/${selectedId}`, { title: trimmed });
+    reload();
+  };
+
   const addPage = async () => {
     const created = await api.post<ProjectPage>(`/projects/${projectId}/pages`, { title: `Página ${pages.length + 1}` });
     reload();
     setSelectedId(created.id);
     setContent(created.content);
+    setPageTitle(created.title);
   };
 
   const removePage = async (pageId: number) => {
@@ -303,6 +319,16 @@ function ProjectPages({ projectId }: { projectId: number }) {
         <p className="text-sm text-muted-foreground">Aún no tienes páginas. Crea una para escribir con formato, listas e imágenes.</p>
       ) : selectedId === null ? null : (
         <>
+          <input
+            value={pageTitle}
+            onChange={(e) => setPageTitle(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            placeholder="Título de la página"
+            className="mb-3 w-full border-b border-border bg-transparent pb-2 font-serif text-xl outline-none focus:border-primary"
+          />
           <RichTextEditor
             key={selectedId}
             value={content}

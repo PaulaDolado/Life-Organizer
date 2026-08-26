@@ -2,9 +2,8 @@ import { useState } from "react";
 import { PageHeader } from "../components/AppShell";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
-import { Loading, ErrorMessage, EmptyState } from "../components/Feedback";
+import { Loading, ErrorMessage } from "../components/Feedback";
 import { MiniBarChart } from "../components/MiniBarChart";
-import { SavingsGoalCard, NewSavingsGoalForm } from "../components/SavingsGoals";
 import { FinanceAnalytics, MonthlyBalance, Pagination, SavingsGoal, Transaction } from "../types";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -28,12 +27,12 @@ export function FinanzasPage() {
     reload: reloadTx,
   } = useFetch(() => api.get<{ transactions: Transaction[]; pagination: Pagination }>("/finance/transactions?limit=15"), []);
   const { data: analytics, reload: reloadAnalytics } = useFetch(() => api.get<FinanceAnalytics>("/finance/analytics"), []);
-  const {
-    data: savingsData,
-    loading: loadingSavings,
-    error: savingsError,
-    reload: reloadSavings,
-  } = useFetch(() => api.get<{ savingsGoals: SavingsGoal[] }>("/finance/savings-goals"), []);
+  // Solo para los totales de las tarjetas resumen (Ahorro/Inversión) — las metas en sí (crear,
+  // ver casillas, eliminar) viven únicamente en "Metas de ahorro", no se duplican aquí.
+  const { data: savingsData, reload: reloadSavings } = useFetch(
+    () => api.get<{ savingsGoals: SavingsGoal[] }>("/finance/savings-goals"),
+    []
+  );
 
   const reloadAll = () => {
     reloadBalance();
@@ -110,30 +109,6 @@ export function FinanzasPage() {
             </div>
           </div>
 
-          <div>
-            <h2 className="mb-6 text-xl font-medium">Ahorro e inversión</h2>
-            {savingsError && <ErrorMessage message={savingsError} />}
-            <SavingsQuickAdd onCreated={reloadAll} />
-
-            {loadingSavings && !savingsData ? (
-              // Solo en la carga inicial (ver el mismo comentario en MetasAhorroPage): en un
-              // reload no debe desmontarse la rejilla, o el modal de "ver todas las casillas"
-              // se cerraría solo en cada clic dentro de él.
-              <Loading label="Cargando metas..." />
-            ) : savingsGoals.length === 0 ? (
-              <EmptyState message="Todavía no tienes metas de ahorro ni de inversión. Crea la primera arriba y verás sus casillas aquí mismo." />
-            ) : (
-              <div className="grid gap-6 md:grid-cols-2">
-                {savingsGoals.map((goal) => (
-                  // onChanged={reloadAll}, no solo reloadSavings: pisar una casilla crea una
-                  // transacción real (ver contributeToSavingsGoal), así que también debe
-                  // refrescar Ingresos/Balance/Movimientos, no solo la propia meta.
-                  <SavingsGoalCard key={goal.id} goal={goal} onChanged={reloadAll} />
-                ))}
-              </div>
-            )}
-          </div>
-
           {analytics && (
             <div className="space-y-6">
               <div className="card-soft">
@@ -197,28 +172,6 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between">
       <span className="text-sm opacity-80">{label}</span>
       <span className="font-medium">{value}</span>
-    </div>
-  );
-}
-
-function SavingsQuickAdd({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="mb-6">
-      <button onClick={() => setOpen((v) => !v)} className="btn-dark mb-4">
-        {open ? "Cerrar" : "+ Nueva meta de ahorro/inversión"}
-      </button>
-
-      {open && (
-        <NewSavingsGoalForm
-          onSubmit={async (input) => {
-            await api.post("/finance/savings-goals", input);
-            setOpen(false);
-            onCreated();
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AppShell, Tab } from "../components/AppShell";
 import { AgendaPage } from "./AgendaPage";
+import { PlanificadorPage } from "./PlanificadorPage";
 import { MetasPage } from "./MetasPage";
 import { FinanzasPage } from "./FinanzasPage";
 import { MetasAhorroPage } from "./MetasAhorroPage";
@@ -9,6 +10,7 @@ import { HobbiesPage } from "./HobbiesPage";
 
 const TAB_CONTENT: Record<Tab, () => JSX.Element> = {
   agenda: AgendaPage,
+  planificador: PlanificadorPage,
   metas: MetasPage,
   finanzas: FinanzasPage,
   "finanzas-ahorro": MetasAhorroPage,

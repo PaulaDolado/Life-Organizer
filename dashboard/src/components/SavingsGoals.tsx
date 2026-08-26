@@ -112,22 +112,20 @@ export function SavingsGoalCard({ goal, onChanged }: { goal: SavingsGoal; onChan
 
       <BoxesGrid count={isTruncated ? PREVIEW_BOXES : boxCount} filled={filled} step={step} onBoxClick={handleBoxClick} />
 
-      {isTruncated && (
-        <button
-          onClick={() => setExpanded(true)}
-          className="mt-3 cursor-pointer text-xs font-medium text-primary hover:underline"
-        >
-          Ver las {boxCount} casillas →
-        </button>
-      )}
-
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           Casillas: <strong className="text-foreground">{boxCount}</strong> · {eur(step)} cada una · categoría {goal.category}
         </span>
-        <span>
-          Ahorrado hasta ahora: <strong className="text-foreground">{eur(goal.currentAmount)}</strong> / {eur(goal.targetAmount)} (
-          {goal.progressPercent}%)
+        <span className="flex flex-wrap items-center gap-3">
+          <span>
+            Ahorrado hasta ahora: <strong className="text-foreground">{eur(goal.currentAmount)}</strong> / {eur(goal.targetAmount)} (
+            {goal.progressPercent}%)
+          </span>
+          {isTruncated && (
+            <button onClick={() => setExpanded(true)} className="cursor-pointer whitespace-nowrap font-medium text-primary hover:underline">
+              Ver las {boxCount} casillas →
+            </button>
+          )}
         </span>
       </div>
 
