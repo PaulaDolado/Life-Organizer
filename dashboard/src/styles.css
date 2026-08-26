@@ -28,6 +28,7 @@
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
+  --color-habit: var(--habit);
   --shadow-soft: 0 1px 2px oklch(0.284 0.008 59.3 / 0.04), 0 8px 24px -16px oklch(0.284 0.008 59.3 / 0.25);
 }
 
@@ -43,6 +44,9 @@
   --positive: oklch(0.529 0.033 148.2);
   --negative: oklch(0.55 0.16 30);
   --warning: oklch(0.65 0.15 70);
+  /* Único tono frío de la paleta (el resto son cálidos: sage/sand/hobby/warning) — para que el
+     recuadro de Hábitos se distinga bien al ir ahora al lado del sage sólido de Objetivos. */
+  --habit: oklch(0.58 0.1 235);
 
   --background: var(--paper);
   --foreground: var(--charcoal);

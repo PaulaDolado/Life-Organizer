@@ -31,6 +31,11 @@ const PRIORITY_STYLES: Record<TaskPriority, string> = {
   high: "bg-destructive/15 text-destructive",
 };
 
+interface TaskFields {
+  title?: string;
+  description?: string | null;
+}
+
 export function PlanificadorPage() {
   const { data, loading, error, reload } = useFetch(() => api.get<{ tasks: Task[] }>("/planner/tasks"), []);
   const tasks = data?.tasks ?? [];
@@ -66,9 +71,15 @@ export function PlanificadorPage() {
     reload();
   };
 
-  const addTask = async (status: TaskStatus, title: string) => {
+  const addTask = async (status: TaskStatus, title: string, description: string) => {
     if (!title.trim()) return;
-    await api.post("/planner/tasks", { title: title.trim(), status });
+    await api.post("/planner/tasks", { title: title.trim(), description: description.trim() || undefined, status });
+    reload();
+  };
+
+  // Editar título/descripción haciendo clic sobre ellos en la propia tarjeta.
+  const updateTask = async (id: number, fields: TaskFields) => {
+    await api.put(`/planner/tasks/${id}`, fields);
     reload();
   };
 
@@ -90,10 +101,12 @@ export function PlanificadorPage() {
               tasks={columnTasks(status)}
               draggedId={draggedId}
               onDragStart={setDraggedId}
+              onDragEnd={() => setDraggedId(null)}
               onDrop={moveTask}
               onCyclePriority={cyclePriority}
               onDelete={removeTask}
-              onAdd={(title) => addTask(status, title)}
+              onUpdate={updateTask}
+              onAdd={(title, description) => addTask(status, title, description)}
             />
           ))}
         </div>
@@ -108,9 +121,11 @@ function KanbanColumn({
   tasks,
   draggedId,
   onDragStart,
+  onDragEnd,
   onDrop,
   onCyclePriority,
   onDelete,
+  onUpdate,
   onAdd,
 }: {
   status: TaskStatus;
@@ -118,12 +133,16 @@ function KanbanColumn({
   tasks: Task[];
   draggedId: number | null;
   onDragStart: (id: number) => void;
+  onDragEnd: () => void;
   onDrop: (taskId: number, status: TaskStatus, beforeTaskId: number | null) => void;
   onCyclePriority: (task: Task) => void;
   onDelete: (id: number) => void;
-  onAdd: (title: string) => void;
+  onUpdate: (id: number, fields: TaskFields) => void;
+  onAdd: (title: string, description: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [dragOver, setDragOver] = useState(false);
 
   const handleDrop = (e: React.DragEvent, beforeTaskId: number | null) => {
@@ -158,57 +177,207 @@ function KanbanColumn({
           </p>
         )}
         {tasks.map((task) => (
-          <div
+          <TaskCard
             key={task.id}
-            draggable
+            task={task}
+            isDragged={draggedId === task.id}
             onDragStart={(e) => {
               e.dataTransfer.setData("text/plain", String(task.id));
               onDragStart(task.id);
             }}
+            onDragEnd={onDragEnd}
             onDragOver={(e) => {
               e.preventDefault();
               e.stopPropagation();
             }}
             onDrop={(e) => handleDrop(e, task.id)}
-            className={`group cursor-grab rounded-xl border border-border bg-background p-3 text-left transition-opacity active:cursor-grabbing ${
-              draggedId === task.id ? "opacity-40" : ""
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm">{task.title}</p>
-              <button
-                onClick={() => onDelete(task.id)}
-                className="cursor-pointer text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                aria-label="Eliminar tarea"
-              >
-                ✕
-              </button>
-            </div>
-            <button
-              onClick={() => onCyclePriority(task)}
-              className={`mt-2 cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-80 ${PRIORITY_STYLES[task.priority]}`}
-            >
-              {PRIORITY_LABELS[task.priority]}
-            </button>
-          </div>
+            onCyclePriority={() => onCyclePriority(task)}
+            onDelete={() => onDelete(task.id)}
+            onUpdate={(fields) => onUpdate(task.id, fields)}
+          />
         ))}
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onAdd(title);
-          setTitle("");
-        }}
-        className="mt-3"
-      >
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="+ Añadir tarea"
-          className="field-input w-full text-sm"
+      {!adding ? (
+        <button
+          onClick={() => setAdding(true)}
+          className="mt-3 w-full cursor-pointer rounded-xl border border-dashed border-border px-3 py-2 text-center text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+        >
+          + Añadir tarea
+        </button>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            onAdd(title, description);
+            setTitle("");
+            setDescription("");
+          }}
+          className="mt-3 space-y-2"
+        >
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Título de la tarea"
+            className="field-input w-full text-sm"
+          />
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Descripción (opcional)"
+            rows={2}
+            className="field-input w-full resize-y text-sm"
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="btn-dark flex-1 text-xs">
+              Añadir
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setTitle("");
+                setDescription("");
+              }}
+              className="cursor-pointer rounded-full border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  isDragged,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  onCyclePriority,
+  onDelete,
+  onUpdate,
+}: {
+  task: Task;
+  isDragged: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onCyclePriority: () => void;
+  onDelete: () => void;
+  onUpdate: (fields: TaskFields) => void;
+}) {
+  const [editingField, setEditingField] = useState<"title" | "description" | null>(null);
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description ?? "");
+
+  const saveTitle = () => {
+    setEditingField(null);
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === task.title) {
+      setTitle(task.title);
+      return;
+    }
+    onUpdate({ title: trimmed });
+  };
+
+  const saveDescription = () => {
+    setEditingField(null);
+    const trimmed = description.trim();
+    if (trimmed === (task.description ?? "")) return;
+    onUpdate({ description: trimmed || null });
+  };
+
+  return (
+    <div
+      // Solo arrastrable fuera de edición: si no, clicar dentro de un campo para seleccionar
+      // texto se interpretaría como el inicio de un drag en vez de como editar.
+      draggable={editingField === null}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={`group cursor-grab rounded-xl border border-border bg-background p-3 text-left transition-opacity active:cursor-grabbing ${
+        isDragged ? "opacity-40" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        {editingField === "title" ? (
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setTitle(task.title);
+                setEditingField(null);
+              }
+            }}
+            className="w-full min-w-0 border-b border-primary bg-transparent text-sm outline-none"
+          />
+        ) : (
+          <button
+            onClick={() => setEditingField("title")}
+            title="Haz clic para editar"
+            className="min-w-0 flex-1 cursor-text text-left text-sm decoration-dotted hover:underline"
+          >
+            {task.title}
+          </button>
+        )}
+        <button
+          onClick={onDelete}
+          className="shrink-0 cursor-pointer text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+          aria-label="Eliminar tarea"
+        >
+          ✕
+        </button>
+      </div>
+
+      {editingField === "description" ? (
+        <textarea
+          autoFocus
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={saveDescription}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setDescription(task.description ?? "");
+              setEditingField(null);
+            }
+          }}
+          rows={2}
+          className="mt-1.5 w-full resize-y border-b border-primary bg-transparent text-xs outline-none"
         />
-      </form>
+      ) : task.description ? (
+        <button
+          onClick={() => setEditingField("description")}
+          title="Haz clic para editar"
+          className="mt-1.5 block w-full cursor-text text-left text-xs text-muted-foreground decoration-dotted hover:underline"
+        >
+          {task.description}
+        </button>
+      ) : (
+        <button
+          onClick={() => setEditingField("description")}
+          className="mt-1.5 block cursor-text text-left text-xs italic text-muted-foreground/60 hover:underline"
+        >
+          + Añadir descripción
+        </button>
+      )}
+
+      <button
+        onClick={onCyclePriority}
+        className={`mt-2 cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-80 ${PRIORITY_STYLES[task.priority]}`}
+      >
+        {PRIORITY_LABELS[task.priority]}
+      </button>
     </div>
   );
 }

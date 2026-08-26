@@ -110,6 +110,7 @@ function NotebookCover({ project, dark, onOpen }: { project: Project; dark: bool
 function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; onBack: () => void; onChanged: () => void }) {
   const { data: project, loading, error, reload } = useFetch(() => api.get<Project>(`/projects/${projectId}`), [projectId]);
   const [note, setNote] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const cycleStatus = async () => {
     if (!project) return;
@@ -211,8 +212,20 @@ function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; 
             <span>
               {project.progress?.completed ?? 0}/{project.progress?.total ?? 0} apuntes resueltos · prioridad {project.priority}
             </span>
-            <button onClick={removeProject} className="cursor-pointer hover:text-destructive">
-              Eliminar proyecto
+            <button
+              onClick={() => {
+                if (!confirmingDelete) {
+                  setConfirmingDelete(true);
+                  return;
+                }
+                removeProject();
+              }}
+              onBlur={() => setConfirmingDelete(false)}
+              className={`cursor-pointer whitespace-nowrap rounded-full px-3 py-1 transition-colors ${
+                confirmingDelete ? "bg-destructive text-destructive-foreground" : "hover:text-destructive"
+              }`}
+            >
+              {confirmingDelete ? "¿Confirmar eliminar?" : "Eliminar proyecto"}
             </button>
           </div>
         </div>
@@ -232,6 +245,7 @@ function ProjectPages({ projectId }: { projectId: number }) {
   const [content, setContent] = useState("");
   const [pageTitle, setPageTitle] = useState("");
   const [savingState, setSavingState] = useState<"idle" | "saving" | "saved">("idle");
+  const [confirmingPageId, setConfirmingPageId] = useState<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Selecciona la primera página en cuanto cargan, y carga su contenido al cambiar de página.
@@ -279,7 +293,24 @@ function ProjectPages({ projectId }: { projectId: number }) {
   const removePage = async (pageId: number) => {
     await api.delete(`/projects/${projectId}/pages/${pageId}`);
     if (selectedId === pageId) setSelectedId(null);
+    setConfirmingPageId(null);
     reload();
+  };
+
+  // Página vacía (nunca se ha escrito nada en ella) se borra directamente, sin preguntar —
+  // no hay nada que perder. Si tiene contenido, primer clic pide confirmación (segundo clic
+  // en el mismo aspa borra de verdad); alejar el ratón cancela la confirmación pendiente.
+  const handleDeleteClick = (e: React.MouseEvent, page: ProjectPage) => {
+    e.stopPropagation();
+    if (!page.content || page.content.trim() === "") {
+      removePage(page.id);
+      return;
+    }
+    if (confirmingPageId === page.id) {
+      removePage(page.id);
+    } else {
+      setConfirmingPageId(page.id);
+    }
   };
 
   if (loading) return <Loading label="Cargando páginas..." />;
@@ -293,18 +324,22 @@ function ProjectPages({ projectId }: { projectId: number }) {
             key={page.id}
             onClick={() => selectPage(page)}
             className={`group relative cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 text-xs transition-colors ${
-              page.id === selectedId ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:border-primary/30"
+              confirmingPageId === page.id
+                ? "border border-destructive bg-destructive/10 text-destructive"
+                : page.id === selectedId
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-border text-muted-foreground hover:border-primary/30"
             }`}
           >
             {page.title}
             <span
               role="button"
-              title="Eliminar página"
-              onClick={(e) => {
-                e.stopPropagation();
-                removePage(page.id);
-              }}
-              className="ml-2 cursor-pointer opacity-60 hover:opacity-100"
+              title={confirmingPageId === page.id ? "Confirmar eliminar" : "Eliminar página"}
+              onClick={(e) => handleDeleteClick(e, page)}
+              onMouseLeave={() => setConfirmingPageId((id) => (id === page.id ? null : id))}
+              className={`ml-2 cursor-pointer ${
+                confirmingPageId === page.id ? "font-bold opacity-100" : "opacity-60 hover:opacity-100"
+              }`}
             >
               ✕
             </span>

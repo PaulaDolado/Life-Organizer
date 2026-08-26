@@ -30,6 +30,8 @@ model User {
   notifications Notification[]
   tasks         Task[]
   notes         Note[]
+  habits        Habit[]
+  habitLogs     HabitLog[]
 }
 
 model Event {
@@ -243,6 +245,39 @@ model Note {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+// Seguimiento de hábitos diarios (widget de Agenda, junto a Progreso de objetivos): a diferencia
+// de Goal (un número acumulado hacia una meta con fecha de fin), un hábito no "se completa" — se
+// repite indefinidamente y lo que importa es la racha de días seguidos marcados.
+model Habit {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs HabitLog[]
+
+  @@index([userId, active])
+}
+
+// Un registro = "cumplido ese día". Marcar/desmarcar es solo crear o borrar la fila del día
+// (en vez de un booleano por día, así el historial completo queda disponible para la racha
+// y el mapa de calor sin tener que guardar 365 filas vacías por hábito y año).
+model HabitLog {
+  id        Int      @id @default(autoincrement())
+  habitId   Int
+  userId    Int
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, date])
+  @@index([userId, date])
 }
 
 model Notification {

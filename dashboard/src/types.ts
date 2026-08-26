@@ -44,6 +44,13 @@ export interface AgendaResponse {
   pagination: Pagination;
 }
 
+export interface Habit {
+  id: number;
+  title: string;
+  streak: number;
+  completedDates: string[]; // YYYY-MM-DD, últimos 30 días con marca
+}
+
 export interface Note {
   id: number;
   content: string;

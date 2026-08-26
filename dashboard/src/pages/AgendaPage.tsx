@@ -3,7 +3,9 @@ import { PageHeader } from "../components/AppShell";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage } from "../components/Feedback";
-import { AgendaResponse, Event, EventType, Goal, Note, RecurringPattern } from "../types";
+import { GoalsDonutChart, GOALS_DONUT_PALETTE } from "../components/GoalsDonutChart";
+import { HabitsTrackerCard } from "../components/HabitsTrackerCard";
+import { AgendaResponse, Event, EventType, Goal, Habit, Note, RecurringPattern } from "../types";
 
 const DAY_LABELS = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const TYPES: { value: EventType; label: string }[] = [
@@ -73,6 +75,7 @@ export function AgendaPage() {
   );
 
   const { data: goalsData } = useFetch(() => api.get<{ goals: Goal[] }>("/goals?status=active"), []);
+  const { data: habitsData, reload: reloadHabits } = useFetch(() => api.get<{ habits: Habit[] }>("/habits"), []);
   const { data: notesData, reload: reloadNotes } = useFetch(() => api.get<{ notes: Note[] }>("/notes"), []);
 
   const week = useMemo(() => {
@@ -150,9 +153,20 @@ export function AgendaPage() {
         )}
       </section>
 
-      <section className="flex justify-end">
-        <div className="w-full space-y-6 lg:max-w-sm">
+      {/* Hábitos a la izquierda ocupando el resto del ancho; Objetivos a la derecha con el mismo
+          ancho máximo que Notas rápidas más abajo (lg:max-w-sm), para que ambas columnas
+          angostas queden alineadas entre sí. */}
+      <section className="mb-8 flex flex-col gap-6 lg:flex-row">
+        <div className="lg:flex-1">
+          <HabitsTrackerCard habits={habitsData?.habits ?? []} onChanged={reloadHabits} />
+        </div>
+        <div className="w-full lg:max-w-sm">
           <GoalsProgressCard goals={goalsData?.goals ?? []} />
+        </div>
+      </section>
+
+      <section className="flex justify-end">
+        <div className="w-full lg:max-w-sm">
           <QuickNotesCard notes={notesData?.notes ?? []} onChanged={reloadNotes} />
         </div>
       </section>
@@ -372,30 +386,28 @@ function GoalsProgressCard({ goals }: { goals: Goal[] }) {
 
   return (
     <div className="rounded-3xl bg-primary p-8 text-primary-foreground">
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-widest opacity-60">Progreso de objetivos</h2>
-        {goals.length > 0 && <span className="font-serif text-2xl">{overall}%</span>}
-      </div>
+      <h2 className="mb-6 text-xs uppercase tracking-widest opacity-60">Progreso de objetivos</h2>
 
       {goals.length === 0 ? (
         <p className="text-sm opacity-80">No tienes objetivos activos.</p>
       ) : (
-        <ul className="space-y-4">
-          {goals.map((goal) => {
-            const percent = percentOf(goal);
-            return (
-              <li key={goal.id}>
-                <div className="mb-1.5 flex items-center justify-between text-sm">
-                  <span className="truncate pr-2 opacity-80">{goal.title}</span>
-                  <span className="shrink-0 font-medium">{percent}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-primary-foreground/20">
-                  <div className="h-full bg-primary-foreground transition-all" style={{ width: `${percent}%` }} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex items-center gap-4">
+          <GoalsDonutChart goals={goals} overallPercent={overall} />
+
+          {/* Qué color del donut es cada objetivo: punto + nombre, al lado del donut. */}
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {goals.map((goal, i) => (
+              <span key={goal.id} className="flex min-w-0 items-center gap-1.5 text-xs">
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: GOALS_DONUT_PALETTE[i % GOALS_DONUT_PALETTE.length] }}
+                  aria-hidden
+                />
+                <span className="truncate opacity-80">{goal.title}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
