@@ -11,6 +11,7 @@ import hobbiesRoutes from "./hobbies.routes";
 import notificationsRoutes from "./notifications.routes";
 import todayRoutes from "./today.routes";
 import searchRoutes from "./search.routes";
+import syncRoutes from "./sync.routes";
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use("/hobbies", hobbiesRoutes);
 router.use("/notifications", notificationsRoutes);
 router.use("/today", todayRoutes);
 router.use("/search", searchRoutes);
+router.use("/sync", syncRoutes);
 
 export default router;

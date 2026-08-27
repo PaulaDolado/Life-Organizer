@@ -39,17 +39,23 @@ const tasksSchema = Joi.object({
 }).default({ create: [], update: [] });
 
 const subtaskParentField = { taskId: Joi.number().integer().positive().required() };
+// `createSubtaskSchema` solo admite `title` (así lo espera `addSubtask`, que no recibe estado
+// inicial) — pero una subtarea creada offline puede haberse completado antes de sincronizar
+// nunca, así que aquí se añade `completed` como opcional (syncService la aplica en un segundo
+// paso tras crear, ver syncService.ts).
 const subtasksSchema = Joi.object({
   create: Joi.array()
-    .items(createSubtaskSchema.keys({ ...localIdField, ...subtaskParentField }))
+    .items(createSubtaskSchema.keys({ ...localIdField, ...subtaskParentField, completed: Joi.boolean() }))
     .default([]),
   update: Joi.array()
     .items(updateSubtaskSchema.keys({ ...updateEnvelope, ...subtaskParentField }))
     .default([]),
 }).default({ create: [], update: [] });
 
+// Igual que con las subtareas: `createNoteSchema` solo admite `content`, pero una nota rápida
+// creada offline puede haberse marcado como hecha antes de sincronizar — `checked` opcional.
 const notesSchema = Joi.object({
-  create: Joi.array().items(createNoteSchema.keys(localIdField)).default([]),
+  create: Joi.array().items(createNoteSchema.keys({ ...localIdField, checked: Joi.boolean() })).default([]),
   update: Joi.array().items(updateNoteSchema.keys(updateEnvelope)).default([]),
 }).default({ create: [], update: [] });
 
@@ -74,19 +80,34 @@ const habitLogsSchema = Joi.object({
     .default([]),
 }).default({ create: [] });
 
-const DELETE_ENTITY_TYPES = ["event", "task", "subtask", "note", "habit", "habitLog"];
-
+// Tres formas de "borrar", según cómo se identifica cada tipo (ver syncService.ts):
+// - la mayoría por su `id` de servidor;
+// - una excepción de evento por (eventId, originalStartTime) — no tiene id propio conocido
+//   por el cliente hasta que hace un pull;
+// - una subtarea necesita también `taskId` (deleteSubtask lo exige, ver plannerService.ts);
+// - un HabitLog se borra "desmarcando el día" (habitId, date) — no por id, igual que un
+//   registro no se referencia por id en ningún otro sitio de la app (ver habitsService.ts).
 const deleteSchema = Joi.alternatives().try(
   Joi.object({
-    entityType: Joi.string()
-      .valid(...DELETE_ENTITY_TYPES)
-      .required(),
+    entityType: Joi.string().valid("event", "task", "note", "habit").required(),
     id: Joi.number().integer().positive().required(),
+  }),
+  Joi.object({
+    entityType: Joi.string().valid("subtask").required(),
+    id: Joi.number().integer().positive().required(),
+    taskId: Joi.number().integer().positive().required(),
   }),
   Joi.object({
     entityType: Joi.string().valid("eventException").required(),
     eventId: Joi.number().integer().positive().required(),
     originalStartTime: Joi.date().iso().required(),
+  }),
+  Joi.object({
+    entityType: Joi.string().valid("habitLog").required(),
+    habitId: Joi.number().integer().positive().required(),
+    date: Joi.string()
+      .pattern(/^\d{4}-\d{2}-\d{2}$/)
+      .required(),
   })
 );
 

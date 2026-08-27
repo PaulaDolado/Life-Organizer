@@ -66,6 +66,44 @@ Un único viaje al backend en vez de entrar a Agenda + Planificador + Proyectos 
 
 Respuesta: `{ query, events, tasks, notes, projects }`, cada uno un array de resultados resumidos (id + campos mínimos para mostrar y navegar).
 
+## Sincronización (Sync)
+
+Para la app móvil offline (SQLite local + estas rutas de sincronización). Postgres sigue
+siendo la única fuente de verdad — el móvil replica un subconjunto y reconcilia al recuperar
+conexión.
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/sync/pull?since=` | JWT | Todo lo creado/editado (y los borrados como tombstones) desde el cursor `since`. Sin `since`, bootstrap completo |
+| POST | `/sync/push` | JWT | Sube un lote de cambios hechos offline: creaciones, ediciones y borrados |
+
+**Alcance (Fase 1)**: `Event` + `EventException`, `Task` + `Subtask`, `Note`, `Habit` +
+`HabitLog`. **No sincronizan** (solo web, por ahora): Metas (`Goal`/`GoalProgress`), Finanzas
+(`Transaction`/`SavingsGoal`), Proyectos (`Project`/`ProjectTask`/`ProjectPage`), Hobbies
+(`Hobby`/`HobbySession`), Notificaciones.
+
+**Pull** — respuesta `{ serverTime, events, eventExceptions, tasks, subtasks, notes, habits, habitLogs, tombstones }`.
+`serverTime` es el instante en que se hizo la consulta (no el `updatedAt` máximo de las filas
+devueltas) — el cliente debe guardarlo y enviarlo como `since` en el siguiente pull. Cada
+tombstone es `{ id, entityType, entityId, deletedAt }` — el cliente borra localmente esa fila.
+
+**Push** — body por tipo (`events`, `tasks`, `subtasks`, `notes`, `habits`): `{ create: [...],
+update: [...] }`; `eventExceptions: { upsert: [...] }`; `habitLogs: { create: [...] }` (sin
+`update` — un registro de hábito solo se crea o se borra, nunca se edita); y un array común
+`deletes: [{ entityType, id, ... }]`.
+
+- Cada elemento de `create` lleva un `localId` (UUID generado por el cliente); la respuesta
+  incluye `idMappings: [{ entityType, localId, id }]` para que el móvil sustituya su id local
+  por el real.
+- Cada elemento de `update` lleva `id` (real, del servidor) y `clientUpdatedAt` (cuándo se
+  editó en el dispositivo) — resolución de conflictos **last-write-wins**: si
+  `clientUpdatedAt` es más reciente que el `updatedAt` actual del servidor, se aplica; si no,
+  se descarta y se reporta en `conflicts: [{ entityType, id }]` (el cliente lo sobrescribe con
+  la versión del servidor en el siguiente pull). Adecuado porque estos datos son de un único
+  usuario sincronizando entre sus propios dispositivos, no colaborativos entre personas.
+- Un `delete` sobre algo ya borrado (sincronizado desde otro dispositivo) es idempotente —
+  éxito, no error.
+
 ## Metas (Goals)
 
 | Método | Ruta | Auth | Descripción |
