@@ -177,3 +177,45 @@ export async function completeTask(userId: number, projectId: number, taskId: nu
     data: { completed: true, completedAt: new Date() },
   });
 }
+
+const RECENT_ENTRIES_LIMIT = 5;
+const RECENT_ENTRIES_WINDOW_DAYS = 7; // "reciente" = tocada en la última semana
+
+/** Quita etiquetas HTML para un avance en texto plano del contenido de una página (que se
+ * edita como HTML enriquecido, ver ProjectPages en el dashboard). */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const RECENT_ENTRY_PREVIEW_LENGTH = 160;
+
+/**
+ * Últimas páginas de libreta tocadas (creadas o editadas) por el usuario en cualquiera de sus
+ * proyectos, en la última semana — la usa `todayService` para la vista "Hoy": conecta Hoy con
+ * Proyectos igual que ya conecta con Agenda/Planificador/Hábitos/Notas. Vacío si no ha tocado
+ * ninguna libreta recientemente, no hace falta "página en blanco" — la sección simplemente no
+ * aparece (ver HoyPage en el dashboard).
+ */
+export async function listRecentEntries(userId: number, limit: number = RECENT_ENTRIES_LIMIT) {
+  const since = new Date();
+  since.setDate(since.getDate() - RECENT_ENTRIES_WINDOW_DAYS);
+
+  const pages = await prisma.projectPage.findMany({
+    where: { project: { userId }, updatedAt: { gte: since } },
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+    include: { project: { select: { id: true, title: true } } },
+  });
+
+  return pages.map((page) => ({
+    id: page.id,
+    projectId: page.projectId,
+    projectTitle: page.project.title,
+    pageTitle: page.title,
+    preview: stripHtml(page.content).slice(0, RECENT_ENTRY_PREVIEW_LENGTH),
+    updatedAt: page.updatedAt,
+  }));
+}

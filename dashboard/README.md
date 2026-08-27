@@ -49,5 +49,5 @@ El repo de referencia es un prototipo **cliente-only**: sin backend, sin auth, t
 ## Decisiones de diseño (generales)
 
 - **Sin React Router**: con 5 secciones y sin necesidad de URLs profundas, un simple `useState<Tab>` en `DashboardPage` es más simple que añadir una dependencia de routing.
-- **Sin librería de gráficos**: el original usa Recharts; aquí se mantuvo `MiniBarChart` (SVG puro, sin dependencias) para la tendencia de 6 meses en Finanzas — evita añadir una librería solo para una tendencia de 6 barras.
+- **Sin librería de gráficos**: el original usa Recharts; aquí se mantuvo `MiniLineChart` (SVG puro, sin dependencias, con crosshair+tooltip al pasar el ratón) para la tendencia de 6 meses en Finanzas — evita añadir una librería solo para una línea de 6 puntos.
 - **`useFetch`** ([src/hooks/useFetch.ts](src/hooks/useFetch.ts)) centraliza loading/error/reload para no repetir ese boilerplate en cada componente.

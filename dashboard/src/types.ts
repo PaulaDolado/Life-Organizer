@@ -32,16 +32,44 @@ export interface Event {
   isRecurring?: boolean;
   recurringPattern?: RecurringPattern | null;
   isRecurringInstance?: boolean;
+  reminderMinutesBefore: number[];
+  guests: string[];
+  // Solo en ocurrencias recurrentes: horario "natural" (sin excepción) de esta ocurrencia —
+  // necesario para crear/editar la excepción de ESTA ocurrencia concreta (ver EventException).
+  originalStartTime?: string;
+  isException?: boolean;
+  exceptionStatus?: "moved";
 }
 
 export interface AgendaResponse {
   week?: string;
   date?: string;
+  month?: string;
   weekStart?: string;
   weekEnd?: string;
+  monthStart?: string;
+  monthEnd?: string;
   timezone: string;
   events: Event[];
   pagination: Pagination;
+}
+
+export interface FreeBlock {
+  start: string;
+  end: string;
+  durationMinutes: number;
+}
+
+export interface FreeTimeSuggestion {
+  block: { start: string; end: string };
+  task: { id: number; title: string; estimatedMinutes: number };
+}
+
+export interface FreeTimeResponse {
+  date: string;
+  timezone: string;
+  freeBlocks: FreeBlock[];
+  suggestions: FreeTimeSuggestion[];
 }
 
 export interface Habit {
@@ -61,6 +89,12 @@ export interface Note {
 export type TaskStatus = "todo" | "in_progress" | "done";
 export type TaskPriority = "low" | "medium" | "high";
 
+export interface Subtask {
+  id: number;
+  title: string;
+  completed: boolean;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -68,6 +102,12 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   order: number;
+  dueDate: string | null;
+  tags: string[];
+  estimatedMinutes: number | null;
+  actualMinutes: number;
+  projectId: number | null;
+  subtasks: Subtask[];
 }
 
 export type GoalStatus = "active" | "completed" | "expired" | "all";
@@ -182,10 +222,44 @@ export interface HobbyAnalytics {
 
 export interface Notification {
   id: number;
-  type: "event_reminder" | "goal_at_risk";
+  type: "event_reminder" | "goal_at_risk" | "task_due";
   title: string;
   message: string;
   relatedId: number | null;
   read: boolean;
   createdAt: string;
+}
+
+export interface RecentProjectEntry {
+  id: number;
+  projectId: number;
+  projectTitle: string;
+  pageTitle: string;
+  preview: string;
+  updatedAt: string;
+}
+
+export interface TodayResponse {
+  date: string;
+  timezone: string;
+  events: Event[];
+  tasksDueToday: Task[];
+  habits: Habit[];
+  notes: Note[];
+  recentProjectEntries: RecentProjectEntry[];
+  combinedStreak: number;
+}
+
+export interface SearchResults {
+  query: string;
+  events: { id: number; title: string; startTime: string; isRecurring: boolean }[];
+  tasks: { id: number; title: string; status: TaskStatus }[];
+  notes: { id: number; content: string }[];
+  projects: { id: number; title: string; status: Project["status"] }[];
+}
+
+export interface IcsImportResult {
+  created: number;
+  skippedUnparsable: number;
+  importedAsSingleOccurrence: number;
 }

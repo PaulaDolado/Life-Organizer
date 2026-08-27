@@ -9,6 +9,8 @@ import financeRoutes from "./finance.routes";
 import projectsRoutes from "./projects.routes";
 import hobbiesRoutes from "./hobbies.routes";
 import notificationsRoutes from "./notifications.routes";
+import todayRoutes from "./today.routes";
+import searchRoutes from "./search.routes";
 
 const router = Router();
 
@@ -22,5 +24,7 @@ router.use("/finance", financeRoutes);
 router.use("/projects", projectsRoutes);
 router.use("/hobbies", hobbiesRoutes);
 router.use("/notifications", notificationsRoutes);
+router.use("/today", todayRoutes);
+router.use("/search", searchRoutes);
 
 export default router;

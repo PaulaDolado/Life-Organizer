@@ -1,16 +1,20 @@
 jest.mock("../../../src/config/database", () => ({
   prisma: {
     event: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    eventException: { findMany: jest.fn(), upsert: jest.fn(), deleteMany: jest.fn() },
+    task: { findMany: jest.fn() },
     user: { findUnique: jest.fn() },
   },
 }));
 
 import { prisma } from "../../../src/config/database";
 import * as agendaService from "../../../src/services/agendaService";
-import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
+import { ForbiddenError, NotFoundError, ValidationError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
   event: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; delete: jest.Mock };
+  eventException: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+  task: { findMany: jest.Mock };
   user: { findUnique: jest.Mock };
 };
 
@@ -18,6 +22,7 @@ describe("agendaService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.user.findUnique.mockResolvedValue({ timezone: "UTC" });
+    prismaMock.eventException.findMany.mockResolvedValue([]); // sin excepciones salvo que un test diga lo contrario
   });
 
   describe("getDay", () => {
@@ -164,6 +169,156 @@ describe("agendaService", () => {
       const updated = await agendaService.updateEvent(1, 1, { title: "Nuevo" });
 
       expect(updated.title).toBe("Nuevo");
+    });
+  });
+
+  describe("getMonth", () => {
+    it("consulta eventos en el rango del mes completo", async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      const result = await agendaService.getMonth(1, "2026-08-15");
+
+      const whereArg = prismaMock.event.findMany.mock.calls[0][0].where;
+      expect(whereArg.startTime.gte.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+      expect(result.events).toEqual([]);
+    });
+  });
+
+  describe("findEventsInRange con excepciones recurrentes", () => {
+    it("aplica una excepción 'cancelled' a la ocurrencia de la semana consultada", async () => {
+      const recurringTemplate = {
+        id: 5,
+        userId: 1,
+        title: "Gym recurrente",
+        type: "gym",
+        isRecurring: true,
+        recurringPattern: "weekly",
+        startTime: new Date("2026-08-03T18:00:00.000Z"),
+        endTime: new Date("2026-08-03T19:00:00.000Z"),
+      };
+
+      prismaMock.event.findMany.mockImplementation(({ where }: { where: { isRecurring: boolean } }) => {
+        if (where.isRecurring === true) return Promise.resolve([recurringTemplate]);
+        return Promise.resolve([]);
+      });
+      prismaMock.eventException.findMany.mockResolvedValue([
+        { eventId: 5, originalStartTime: new Date("2026-08-24T18:00:00.000Z"), status: "cancelled" },
+      ]);
+
+      const result = await agendaService.getWeek(1, "2026-08-24");
+
+      expect(result.events).toHaveLength(0);
+    });
+
+    it("aplica una excepción 'moved' con el horario nuevo", async () => {
+      const recurringTemplate = {
+        id: 5,
+        userId: 1,
+        title: "Gym recurrente",
+        type: "gym",
+        isRecurring: true,
+        recurringPattern: "weekly",
+        startTime: new Date("2026-08-03T18:00:00.000Z"),
+        endTime: new Date("2026-08-03T19:00:00.000Z"),
+      };
+
+      prismaMock.event.findMany.mockImplementation(({ where }: { where: { isRecurring: boolean } }) => {
+        if (where.isRecurring === true) return Promise.resolve([recurringTemplate]);
+        return Promise.resolve([]);
+      });
+      prismaMock.eventException.findMany.mockResolvedValue([
+        {
+          eventId: 5,
+          originalStartTime: new Date("2026-08-24T18:00:00.000Z"),
+          status: "moved",
+          newStartTime: new Date("2026-08-26T09:00:00.000Z"),
+          newEndTime: new Date("2026-08-26T10:00:00.000Z"),
+        },
+      ]);
+
+      const result = await agendaService.getWeek(1, "2026-08-24");
+
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].startTime.toISOString()).toBe("2026-08-26T09:00:00.000Z");
+      expect((result.events[0] as { isException?: boolean }).isException).toBe(true);
+    });
+  });
+
+  describe("setEventException / deleteEventException", () => {
+    it("rechaza crear una excepción sobre un evento no recurrente", async () => {
+      prismaMock.event.findUnique.mockResolvedValue({ id: 1, userId: 1, isRecurring: false });
+
+      await expect(
+        agendaService.setEventException(1, 1, { originalStartTime: new Date(), action: "cancelled" })
+      ).rejects.toThrow(ValidationError);
+    });
+
+    it("lanza ForbiddenError si el evento recurrente es de otro usuario", async () => {
+      prismaMock.event.findUnique.mockResolvedValue({ id: 1, userId: 2, isRecurring: true });
+
+      await expect(
+        agendaService.setEventException(1, 1, { originalStartTime: new Date(), action: "cancelled" })
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it("crea una excepción 'moved' para un evento recurrente propio", async () => {
+      prismaMock.event.findUnique.mockResolvedValue({ id: 1, userId: 1, isRecurring: true });
+      prismaMock.eventException.upsert.mockResolvedValue({ id: 10, status: "moved" });
+
+      const result = await agendaService.setEventException(1, 1, {
+        originalStartTime: new Date("2026-08-24T18:00:00.000Z"),
+        action: "moved",
+        newStartTime: new Date("2026-08-25T18:00:00.000Z"),
+        newEndTime: new Date("2026-08-25T19:00:00.000Z"),
+      });
+
+      expect(result.status).toBe("moved");
+      expect(prismaMock.eventException.upsert).toHaveBeenCalled();
+    });
+
+    it("deleteEventException comprueba propiedad antes de borrar", async () => {
+      prismaMock.event.findUnique.mockResolvedValue({ id: 1, userId: 2, isRecurring: true });
+
+      await expect(agendaService.deleteEventException(1, 1, "2026-08-24T18:00:00.000Z")).rejects.toThrow(ForbiddenError);
+      expect(prismaMock.eventException.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getFreeTime", () => {
+    it("calcula los huecos libres del día y sugiere la tarea pendiente de mayor prioridad que encaje", async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        {
+          id: 1,
+          userId: 1,
+          isRecurring: false,
+          startTime: new Date("2026-08-24T10:00:00.000Z"),
+          endTime: new Date("2026-08-24T11:00:00.000Z"),
+        },
+      ]);
+      prismaMock.task.findMany.mockResolvedValue([
+        { id: 1, title: "Tarea corta", status: "todo", priority: "low", estimatedMinutes: 30 },
+        { id: 2, title: "Tarea importante", status: "todo", priority: "high", estimatedMinutes: 45 },
+      ]);
+
+      const result = await agendaService.getFreeTime(1, "2026-08-24");
+
+      // Ventana 08:00-22:00 con un evento 10:00-11:00 → dos huecos: 08:00-10:00 y 11:00-22:00.
+      expect(result.freeBlocks).toHaveLength(2);
+      expect(result.freeBlocks[0].start.toISOString()).toBe("2026-08-24T08:00:00.000Z");
+      expect(result.freeBlocks[0].end.toISOString()).toBe("2026-08-24T10:00:00.000Z");
+
+      // La tarea de prioridad alta se sugiere primero (en el primer hueco), no la de menor prioridad.
+      expect(result.suggestions[0].task.id).toBe(2);
+    });
+
+    it("no sugiere la misma tarea dos veces en huecos distintos", async () => {
+      prismaMock.event.findMany.mockResolvedValue([]); // día libre: un único hueco 08:00-22:00
+      prismaMock.task.findMany.mockResolvedValue([{ id: 1, title: "Única", status: "todo", priority: "medium", estimatedMinutes: 30 }]);
+
+      const result = await agendaService.getFreeTime(1, "2026-08-24");
+
+      expect(result.freeBlocks).toHaveLength(1);
+      expect(result.suggestions).toHaveLength(1);
     });
   });
 });

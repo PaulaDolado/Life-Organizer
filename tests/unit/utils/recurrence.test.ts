@@ -138,3 +138,81 @@ describe("nextOccurrenceStartingIn", () => {
     expect(next?.startTime.toISOString()).toBe("2026-08-24T10:30:00.000Z");
   });
 });
+
+describe("excepciones a ocurrencias recurrentes", () => {
+  it("expandRecurringEvent omite una ocurrencia cancelada", () => {
+    const event = makeEvent(); // lunes 3, 10, 17, 24 de agosto
+    const exceptions = [{ originalStartTime: new Date("2026-08-10T18:00:00.000Z"), status: "cancelled" }];
+
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-24T23:59:59.000Z"), exceptions);
+
+    expect(occurrences.map((o) => o.startTime.toISOString().slice(0, 10))).toEqual(["2026-08-03", "2026-08-17", "2026-08-24"]);
+  });
+
+  it("expandRecurringEvent usa el horario nuevo de una ocurrencia movida", () => {
+    const event = makeEvent();
+    const exceptions = [
+      {
+        originalStartTime: new Date("2026-08-10T18:00:00.000Z"),
+        status: "moved",
+        newStartTime: new Date("2026-08-12T09:00:00.000Z"),
+        newEndTime: new Date("2026-08-12T10:00:00.000Z"),
+      },
+    ];
+
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-24T23:59:59.000Z"), exceptions);
+
+    const moved = occurrences.find((o) => o.isException);
+    expect(moved?.startTime.toISOString()).toBe("2026-08-12T09:00:00.000Z");
+    expect(moved?.originalStartTime?.toISOString()).toBe("2026-08-10T18:00:00.000Z");
+    expect(moved?.exceptionStatus).toBe("moved");
+    expect(occurrences).toHaveLength(4); // sigue habiendo 4: la del 10 no desaparece, solo cambia de horario
+  });
+
+  it("una ocurrencia movida fuera del rango pedido no aparece, aunque su horario natural sí cayera dentro", () => {
+    const event = makeEvent();
+    const exceptions = [
+      {
+        originalStartTime: new Date("2026-08-10T18:00:00.000Z"),
+        status: "moved",
+        newStartTime: new Date("2026-09-15T09:00:00.000Z"),
+        newEndTime: new Date("2026-09-15T10:00:00.000Z"),
+      },
+    ];
+
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-24T23:59:59.000Z"), exceptions);
+
+    expect(occurrences.map((o) => o.startTime.toISOString().slice(0, 10))).toEqual(["2026-08-03", "2026-08-17", "2026-08-24"]);
+  });
+
+  it("las ocurrencias sin excepción llevan originalStartTime igual a su propio startTime", () => {
+    const event = makeEvent();
+    const [occurrence] = expandRecurringEvent(event, new Date("2026-08-01"), new Date("2026-08-10"));
+    expect(occurrence.originalStartTime?.toISOString()).toBe(occurrence.startTime.toISOString());
+    expect(occurrence.isException).toBeUndefined();
+  });
+
+  it("nextOccurrenceStartingIn no encuentra nada si la única ocurrencia de la ventana está cancelada", () => {
+    const event = makeEvent();
+    const exceptions = [{ originalStartTime: new Date("2026-08-03T18:00:00.000Z"), status: "cancelled" }];
+
+    const next = nextOccurrenceStartingIn(event, new Date("2026-08-01"), new Date("2026-08-09"), exceptions);
+    expect(next).toBeNull();
+  });
+
+  it("nextOccurrenceStartingIn devuelve el horario nuevo de una ocurrencia movida dentro del rango", () => {
+    const event = makeEvent();
+    const exceptions = [
+      {
+        originalStartTime: new Date("2026-08-03T18:00:00.000Z"),
+        status: "moved",
+        newStartTime: new Date("2026-08-05T12:00:00.000Z"),
+        newEndTime: new Date("2026-08-05T13:00:00.000Z"),
+      },
+    ];
+
+    const next = nextOccurrenceStartingIn(event, new Date("2026-08-01"), new Date("2026-08-09"), exceptions);
+    expect(next?.startTime.toISOString()).toBe("2026-08-05T12:00:00.000Z");
+    expect(next?.isException).toBe(true);
+  });
+});

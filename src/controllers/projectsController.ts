@@ -18,6 +18,16 @@ export async function listProjects(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+export async function listRecentEntries(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const entries = await projectsService.listRecentEntries(userId);
+    res.json({ entries });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getProject(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;

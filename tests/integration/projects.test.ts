@@ -104,4 +104,24 @@ describe("Projects Endpoints", () => {
       expect(response.status).toBe(403);
     });
   });
+
+  describe("GET /projects/recent-entries", () => {
+    it("devuelve las páginas de libreta editadas recientemente, de cualquier proyecto propio", async () => {
+      const project = await request(app).post("/projects").set(authed()).send({ title: "Mudanza" });
+      const page = await request(app).post(`/projects/${project.body.id}/pages`).set(authed()).send({ title: "Checklist" });
+      await request(app).put(`/projects/${project.body.id}/pages/${page.body.id}`).set(authed()).send({ content: "<p>Cajas</p>" });
+
+      const response = await request(app).get("/projects/recent-entries").set(authed());
+
+      expect(response.status).toBe(200);
+      expect(response.body.entries).toHaveLength(1);
+      expect(response.body.entries[0]).toMatchObject({ projectTitle: "Mudanza", pageTitle: "Checklist", preview: "Cajas" });
+    });
+
+    it("no confunde 'recent-entries' con un :id de proyecto", async () => {
+      const response = await request(app).get("/projects/recent-entries").set(authed());
+      expect(response.status).toBe(200);
+      expect(Array.isArray(response.body.entries)).toBe(true);
+    });
+  });
 });

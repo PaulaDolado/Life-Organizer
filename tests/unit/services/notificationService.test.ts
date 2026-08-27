@@ -1,7 +1,9 @@
 jest.mock("../../../src/config/database", () => ({
   prisma: {
     event: { findMany: jest.fn() },
+    eventException: { findMany: jest.fn() },
     goal: { findMany: jest.fn() },
+    task: { findMany: jest.fn() },
     notification: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -21,7 +23,9 @@ import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
   event: { findMany: jest.Mock };
+  eventException: { findMany: jest.Mock };
   goal: { findMany: jest.Mock };
+  task: { findMany: jest.Mock };
   notification: {
     findMany: jest.Mock;
     findUnique: jest.Mock;
@@ -36,15 +40,16 @@ const prismaMock = prisma as unknown as {
 describe("notificationService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.eventException.findMany.mockResolvedValue([]); // sin excepciones salvo que un test diga lo contrario
   });
 
   describe("createEventReminders", () => {
     const now = new Date("2026-08-24T10:00:00.000Z");
 
-    it("crea un recordatorio para un evento no-recurrente que empieza en ~30 minutos", async () => {
+    it("crea un recordatorio para un evento no-recurrente cuya antelación configurada (30 min) cae ahora", async () => {
       prismaMock.event.findMany
         .mockResolvedValueOnce([
-          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z") },
+          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z"), reminderMinutesBefore: [30] },
         ])
         .mockResolvedValueOnce([]); // sin plantillas recurrentes
       prismaMock.notification.findMany.mockResolvedValue([]); // sin duplicados previos
@@ -59,25 +64,66 @@ describe("notificationService", () => {
             type: "event_reminder",
             relatedId: 1,
             occurrenceAt: new Date("2026-08-24T10:30:00.000Z"),
+            offsetMinutesBefore: 30,
+            title: "Evento en 30 minutos",
           }),
         ],
       });
     });
 
-    it("no duplica un recordatorio ya creado para la misma ocurrencia", async () => {
+    it("un evento con varias antelaciones configuradas genera un aviso independiente por cada una que caiga en su ventana", async () => {
       prismaMock.event.findMany
         .mockResolvedValueOnce([
-          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z") },
+          {
+            id: 1,
+            userId: 7,
+            title: "Revisión anual",
+            // 15 min antes cae ahora mismo (10:00); 1 día antes ya pasó (era ayer a las 10:15) — solo el de 15 min debería dispararse.
+            startTime: new Date("2026-08-24T10:15:00.000Z"),
+            reminderMinutesBefore: [15, 1440],
+          },
+        ])
+        .mockResolvedValueOnce([]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ offsetMinutesBefore: 15, title: "Evento en 15 minutos" })],
+      });
+    });
+
+    it("no duplica un recordatorio ya creado para la misma ocurrencia y la misma antelación", async () => {
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([
+          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z"), reminderMinutesBefore: [30] },
         ])
         .mockResolvedValueOnce([]);
       prismaMock.notification.findMany.mockResolvedValue([
-        { relatedId: 1, occurrenceAt: new Date("2026-08-24T10:30:00.000Z") },
+        { relatedId: 1, occurrenceAt: new Date("2026-08-24T10:30:00.000Z"), offsetMinutesBefore: 30 },
       ]);
 
       const created = await notificationService.createEventReminders(now);
 
       expect(created).toBe(0);
       expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("SÍ crea el aviso de una antelación distinta aunque ya exista uno para la misma ocurrencia", async () => {
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([
+          { id: 1, userId: 7, title: "Dentista", startTime: new Date("2026-08-24T10:30:00.000Z"), reminderMinutesBefore: [30] },
+        ])
+        .mockResolvedValueOnce([]);
+      // Ya existe un aviso de 15 min para esta ocurrencia, pero el que toca ahora es el de 30 min.
+      prismaMock.notification.findMany.mockResolvedValue([
+        { relatedId: 1, occurrenceAt: new Date("2026-08-24T10:30:00.000Z"), offsetMinutesBefore: 15 },
+      ]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(1);
     });
 
     it("crea un recordatorio para la ocurrencia virtual de un evento recurrente", async () => {
@@ -92,6 +138,7 @@ describe("notificationService", () => {
             recurringPattern: "weekly",
             startTime: new Date("2026-08-17T10:30:00.000Z"), // semana anterior
             endTime: new Date("2026-08-17T11:30:00.000Z"),
+            reminderMinutesBefore: [30],
           },
         ]);
       prismaMock.notification.findMany.mockResolvedValue([]);
@@ -102,6 +149,30 @@ describe("notificationService", () => {
       const dataArg = prismaMock.notification.createMany.mock.calls[0][0].data[0];
       expect(dataArg.relatedId).toBe(9);
       expect(dataArg.occurrenceAt.toISOString()).toBe("2026-08-24T10:30:00.000Z"); // +1 semana
+    });
+
+    it("una ocurrencia recurrente cancelada (excepción) no genera recordatorio", async () => {
+      prismaMock.event.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+        {
+          id: 9,
+          userId: 3,
+          title: "Gimnasio semanal",
+          isRecurring: true,
+          recurringPattern: "weekly",
+          startTime: new Date("2026-08-17T10:30:00.000Z"),
+          endTime: new Date("2026-08-17T11:30:00.000Z"),
+          reminderMinutesBefore: [30],
+        },
+      ]);
+      prismaMock.eventException.findMany.mockResolvedValue([
+        { eventId: 9, originalStartTime: new Date("2026-08-24T10:30:00.000Z"), status: "cancelled" },
+      ]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createEventReminders(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
     });
 
     it("no crea nada si no hay eventos ni plantillas en la ventana", async () => {
@@ -178,6 +249,58 @@ describe("notificationService", () => {
 
       expect(created).toBe(0);
       expect(prismaMock.notification.findMany).not.toHaveBeenCalled(); // corta antes de buscar duplicados
+    });
+  });
+
+  describe("createTaskDueReminders", () => {
+    const now = new Date("2026-08-27T10:00:00.000Z");
+
+    it("crea un aviso para una tarea no completada que vence dentro de 24h", async () => {
+      prismaMock.task.findMany.mockResolvedValue([
+        { id: 1, userId: 7, title: "Entregar informe", status: "todo", dueDate: new Date("2026-08-27T18:00:00.000Z") },
+      ]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createTaskDueReminders(now);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ userId: 7, type: "task_due", relatedId: 1, title: "Tarea próxima a vencer" })],
+      });
+    });
+
+    it("marca como 'vencida' una tarea cuya fecha límite ya pasó", async () => {
+      prismaMock.task.findMany.mockResolvedValue([
+        { id: 2, userId: 7, title: "Pagar factura", status: "todo", dueDate: new Date("2026-08-26T10:00:00.000Z") },
+      ]);
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      await notificationService.createTaskDueReminders(now);
+
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ title: "Tarea vencida" })],
+      });
+    });
+
+    it("no duplica el aviso si ya hay uno sin leer para esa tarea", async () => {
+      prismaMock.task.findMany.mockResolvedValue([
+        { id: 1, userId: 7, title: "Entregar informe", status: "todo", dueDate: new Date("2026-08-27T18:00:00.000Z") },
+      ]);
+      prismaMock.notification.findMany.mockResolvedValue([{ relatedId: 1 }]);
+
+      const created = await notificationService.createTaskDueReminders(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("no crea nada si no hay tareas con fecha límite próxima", async () => {
+      prismaMock.task.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createTaskDueReminders(now);
+
+      expect(created).toBe(0);
+      expect(prismaMock.notification.findMany).not.toHaveBeenCalled();
     });
   });
 

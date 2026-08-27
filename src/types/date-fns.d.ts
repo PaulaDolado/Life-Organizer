@@ -18,6 +18,7 @@ declare module "date-fns" {
   export function addWeeks(date: Date | number, amount: number): Date;
   export function addMonths(date: Date | number, amount: number): Date;
   export function addMinutes(date: Date | number, amount: number): Date;
+  export function addHours(date: Date | number, amount: number): Date;
   export function differenceInCalendarDays(dateLeft: Date | number, dateRight: Date | number): number;
   export function differenceInMinutes(dateLeft: Date | number, dateRight: Date | number): number;
   export function isValid(date: unknown): boolean;

@@ -9,6 +9,7 @@ jest.mock("../../../src/config/database", () => ({
       count: jest.fn(),
     },
     projectTask: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    projectPage: { findMany: jest.fn() },
   },
 }));
 
@@ -19,6 +20,7 @@ import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
 const prismaMock = prisma as unknown as {
   project: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
   projectTask: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+  projectPage: { findMany: jest.Mock };
 };
 
 describe("projectsService", () => {
@@ -104,6 +106,62 @@ describe("projectsService", () => {
       await projectsService.listProjects(1);
 
       expect(prismaMock.project.findMany.mock.calls[0][0]).toMatchObject({ skip: 0, take: 20 });
+    });
+  });
+
+  describe("listRecentEntries", () => {
+    it("solo consulta páginas del propio usuario, tocadas en la última semana", async () => {
+      prismaMock.projectPage.findMany.mockResolvedValue([]);
+
+      await projectsService.listRecentEntries(1);
+
+      const whereArg = prismaMock.projectPage.findMany.mock.calls[0][0].where;
+      expect(whereArg.project).toEqual({ userId: 1 });
+      expect(whereArg.updatedAt.gte).toBeInstanceOf(Date);
+    });
+
+    it("quita las etiquetas HTML del contenido para el avance en texto plano", async () => {
+      prismaMock.projectPage.findMany.mockResolvedValue([
+        {
+          id: 1,
+          projectId: 1,
+          title: "Página 1",
+          content: "<p>Hola <strong>mundo</strong></p><ul><li>uno</li></ul>",
+          updatedAt: new Date("2026-08-27T10:00:00.000Z"),
+          project: { id: 1, title: "Life Organizer" },
+        },
+      ]);
+
+      const entries = await projectsService.listRecentEntries(1);
+
+      expect(entries[0].preview).toBe("Hola mundo uno");
+      expect(entries[0].projectTitle).toBe("Life Organizer");
+      expect(entries[0].pageTitle).toBe("Página 1");
+    });
+
+    it("recorta el avance a 160 caracteres", async () => {
+      prismaMock.projectPage.findMany.mockResolvedValue([
+        {
+          id: 1,
+          projectId: 1,
+          title: "Larga",
+          content: "x".repeat(500),
+          updatedAt: new Date(),
+          project: { id: 1, title: "P" },
+        },
+      ]);
+
+      const entries = await projectsService.listRecentEntries(1);
+
+      expect(entries[0].preview).toHaveLength(160);
+    });
+
+    it("devuelve [] si no hay páginas tocadas recientemente", async () => {
+      prismaMock.projectPage.findMany.mockResolvedValue([]);
+
+      const entries = await projectsService.listRecentEntries(1);
+
+      expect(entries).toEqual([]);
     });
   });
 });

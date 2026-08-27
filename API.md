@@ -28,11 +28,43 @@ Todos los listados (`/goals`, `/projects`, `/hobbies`, `/hobbies/category/:categ
 |---|---|---|---|
 | GET | `/agenda/day/:date` | JWT | Eventos del día (`YYYY-MM-DD`), en la timezone del usuario. `?type=`, `?page=`, `?limit=` |
 | GET | `/agenda/week/:date` | JWT | Eventos de la semana que contiene esa fecha (lunes-domingo). Mismos filtros |
-| POST | `/agenda/events` | JWT | Crea evento. `isRecurring`+`recurringPattern` (`weekly`\|`biweekly`\|`monthly`) para series recurrentes |
+| GET | `/agenda/month/:date` | JWT | Eventos del mes que contiene esa fecha. Mismos filtros (`?limit=` por defecto 200) |
+| GET | `/agenda/free-time/:date` | JWT | Huecos libres del día (08:00–22:00 local) + sugerencias de tareas del Planificador que encajan (ver más abajo) |
+| POST | `/agenda/events` | JWT | Crea evento. `isRecurring`+`recurringPattern` (`weekly`\|`biweekly`\|`monthly`) para series recurrentes. `reminderMinutesBefore` (minutos, default `[30]`) y `guests` (nombres/emails, default `[]`) opcionales |
 | PUT | `/agenda/events/:id` | JWT | Edita — afecta a **toda la serie** si es recurrente |
 | DELETE | `/agenda/events/:id` | JWT | Elimina — **toda la serie** si es recurrente |
+| POST | `/agenda/events/:id/exceptions` | JWT | Mueve (`action: "moved"` + `newStartTime`/`newEndTime`) o cancela (`action: "cancelled"`) **una sola ocurrencia** de un evento recurrente, sin tocar el resto de la serie. `originalStartTime` identifica la ocurrencia (400 si el evento no es recurrente) |
+| DELETE | `/agenda/events/:id/exceptions/:originalStartTime` | JWT | Revierte la excepción: la ocurrencia vuelve a su horario natural |
+| GET | `/agenda/ics` | JWT | Exporta todos los eventos como `.ics` (`Content-Type: text/calendar`) — para Google Calendar/Outlook |
+| POST | `/agenda/ics/import` | JWT | Importa eventos desde un `.ics` (`{ ics: "<texto>" }` en el body). Devuelve `{ created, skippedUnparsable, importedAsSingleOccurrence }` |
 
-Los eventos recurrentes se expanden al vuelo: la respuesta mezcla eventos reales y ocurrencias virtuales (`isRecurringInstance: true`), todas con el mismo `id` de la plantilla. Ver [ARCHITECTURE.md](ARCHITECTURE.md#eventos-recurrentes-expansión-virtual).
+Los eventos recurrentes se expanden al vuelo: la respuesta mezcla eventos reales y ocurrencias virtuales (`isRecurringInstance: true`), todas con el mismo `id` de la plantilla. Una ocurrencia con excepción aplicada añade `originalStartTime`, `isException: true` y (si se movió) `exceptionStatus: "moved"`. Ver [ARCHITECTURE.md](ARCHITECTURE.md#eventos-recurrentes-expansión-virtual).
+
+Los recordatorios de evento (`Notification` tipo `event_reminder`) usan `reminderMinutesBefore` de cada evento — un evento puede tener varias antelaciones configuradas (p.ej. `[15, 1440]`) y genera un aviso independiente por cada una.
+
+`GET /agenda/free-time/:date` devuelve `{ freeBlocks: [{start, end, durationMinutes}], suggestions: [{block, task}] }`: los huecos ≥15 min entre eventos dentro de 08:00–22:00, y para cada uno (en orden cronológico) la tarea pendiente del Planificador de mayor prioridad con `estimatedMinutes` que quepa y no se haya sugerido ya en otro hueco.
+
+El `.ics` exportado incluye RRULE (recurrencia), EXDATE (ocurrencias canceladas) y un VEVENT con RECURRENCE-ID por cada ocurrencia movida — ver `utils/ics.ts`. El import es best-effort: mapea `FREQ=WEEKLY`/`WEEKLY;INTERVAL=2`/`MONTHLY` a `weekly`/`biweekly`/`monthly` (otra recurrencia se importa como evento único) y no reconstruye excepciones (`RECURRENCE-ID` se ignora).
+
+## Hoy (Today)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/today` | JWT | Vista "Hoy" combinada — eventos de hoy, tareas con `dueDate` hoy, hábitos, notas, últimas entradas de libreta tocadas (última semana) y la racha combinada |
+
+Un único viaje al backend en vez de entrar a Agenda + Planificador + Proyectos por separado (ver `todayService.ts`). Respuesta: `{ date, timezone, events, tasksDueToday, habits, notes, recentProjectEntries, combinedStreak }`.
+
+`recentProjectEntries` son páginas de libreta (`ProjectPage`) editadas o creadas en los últimos 7 días, como mucho 5, con `{ id, projectId, projectTitle, pageTitle, preview (texto plano, 160 car.), updatedAt }` — vacío ([]) si no se ha tocado ninguna libreta recientemente (ver `projectsService.listRecentEntries`).
+
+`combinedStreak` (ver `streakService.ts`): días consecutivos, empezando hoy hacia atrás, en los que se marcaron todos los hábitos activos Y se completaron todas las tareas con vencimiento ese día. Un día sin hábitos ni tareas vencidas ese día se salta (ni cuenta ni rompe la racha).
+
+## Búsqueda (Search)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/search?q=` | JWT | Busca por texto en eventos, tareas, notas y proyectos del usuario (insensible a mayúsculas, `contains`). Máx. 8 resultados por categoría |
+
+Respuesta: `{ query, events, tasks, notes, projects }`, cada uno un array de resultados resumidos (id + campos mínimos para mostrar y navegar).
 
 ## Metas (Goals)
 
@@ -69,6 +101,7 @@ Una meta que pasa su `periodEnd` sin completarse queda `expired=true` automátic
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/projects` | JWT | `?status=`, `?priority=`, `?page=`, `?limit=` |
+| GET | `/projects/recent-entries` | JWT | Últimas páginas de libreta tocadas (creadas o editadas) en la última semana, de cualquier proyecto — `{ entries: [{ id, projectId, projectTitle, pageTitle, preview, updatedAt }] }`, máx. 5. Usado en Hoy y en Agenda |
 | GET | `/projects/:id` | JWT | Detalle + tareas + `{ total, completed, percent }` |
 | POST | `/projects` | JWT | `status` default `idea`, `priority` default `medium` |
 | PUT | `/projects/:id` | JWT | Edita |
@@ -77,6 +110,21 @@ Una meta que pasa su `periodEnd` sin completarse queda `expired=true` automátic
 | POST | `/projects/:id/tasks` | JWT | Agrega tarea |
 | PUT | `/projects/:id/tasks/:taskId` | JWT | Edita el título |
 | PUT | `/projects/:id/tasks/:taskId/complete` | JWT | Marca completada (no hay endpoint para "descompletar") |
+
+## Planificador (Planner)
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/planner/tasks` | JWT | Tablero kanban. `?projectId=`, `?tag=` |
+| POST | `/planner/tasks` | JWT | `status` default `todo`, `priority` default `medium`. Admite `dueDate`, `tags`, `estimatedMinutes`, `projectId` |
+| PUT | `/planner/tasks/:id` | JWT | Edita cualquier campo (título, estado, prioridad, orden, `dueDate`, `tags`, `estimatedMinutes`, `projectId`) |
+| DELETE | `/planner/tasks/:id` | JWT | Elimina (cascada sobre sus subtareas) |
+| POST | `/planner/tasks/:id/time` | JWT | `{ minutes }` — suma al tiempo real acumulado (`actualMinutes`) |
+| POST | `/planner/tasks/:id/subtasks` | JWT | Añade un paso al checklist de la tarea |
+| PUT | `/planner/tasks/:id/subtasks/:subtaskId` | JWT | Edita título o `completed` de una subtarea |
+| DELETE | `/planner/tasks/:id/subtasks/:subtaskId` | JWT | Elimina una subtarea |
+
+`projectId` es opcional: vincula la tarea a un `Project` existente del mismo usuario (404/403 si no lo es). El recordatorio de `dueDate` lo genera el scheduler de notificaciones, no un endpoint (ver más abajo).
 
 ## Hobbies
 
@@ -100,7 +148,7 @@ Una meta que pasa su `periodEnd` sin completarse queda `expired=true` automátic
 | PUT | `/notifications/read-all` | JWT | Marca todas como leídas |
 | DELETE | `/notifications/:id` | JWT | Elimina |
 
-Las crean solo los schedulers (`event_reminder`, `goal_at_risk`), nunca el usuario directamente — no hay `POST /notifications`.
+Las crean solo los schedulers (`event_reminder`, `goal_at_risk`, `task_due`), nunca el usuario directamente — no hay `POST /notifications`.
 
 ## Otras rutas
 

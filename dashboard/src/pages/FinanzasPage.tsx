@@ -3,7 +3,7 @@ import { PageHeader } from "../components/AppShell";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage } from "../components/Feedback";
-import { MiniBarChart } from "../components/MiniBarChart";
+import { MiniLineChart } from "../components/MiniLineChart";
 import { FinanceAnalytics, MonthlyBalance, Pagination, SavingsGoal, Transaction } from "../types";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -113,7 +113,10 @@ export function FinanzasPage() {
             <div className="space-y-6">
               <div className="card-soft">
                 <h2 className="mb-4 text-sm font-medium">Tendencia (últimos 6 meses)</h2>
-                <MiniBarChart data={analytics.monthlyTrend.map((m) => ({ label: MONTH_LABELS[m.month - 1], value: m.balance }))} />
+                <MiniLineChart
+                  data={analytics.monthlyTrend.map((m) => ({ label: MONTH_LABELS[m.month - 1], value: m.balance }))}
+                  formatValue={eur}
+                />
               </div>
             </div>
           )}

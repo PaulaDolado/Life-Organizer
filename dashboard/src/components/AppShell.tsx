@@ -2,9 +2,18 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useFetch } from "../hooks/useFetch";
 import { api } from "../api/client";
-import { AgendaResponse, Notification } from "../types";
+import { AgendaResponse, Notification, SearchResults } from "../types";
 
-export type Tab = "agenda" | "planificador" | "metas" | "finanzas" | "finanzas-ahorro" | "proyectos" | "hobbies";
+export type Tab = "hoy" | "agenda" | "planificador" | "metas" | "finanzas" | "finanzas-ahorro" | "proyectos" | "hobbies";
+
+// A dónde navegar y qué destacar al hacer clic en un resultado de búsqueda global — cada página
+// destino decide qué hacer con `id` (abrir el diálogo, expandir la tarjeta, etc.) y llama a
+// `onFocusHandled` cuando ya lo ha consumido, para no repetirlo en cada re-render.
+export interface SearchFocus {
+  type: "event" | "task" | "note" | "project";
+  id: number;
+  startTime?: string; // solo eventos: para saltar a la semana correcta antes de abrir el diálogo
+}
 
 interface NavItem {
   key: Tab;
@@ -13,6 +22,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { key: "hoy", label: "Hoy" },
   {
     key: "agenda",
     label: "Agenda",
@@ -38,6 +48,7 @@ function todayIso(): string {
 interface AppShellProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
+  onSearchNavigate: (tab: Tab, focus: SearchFocus) => void;
   children: ReactNode;
 }
 
@@ -48,7 +59,7 @@ const MAX_SIDEBAR_WIDTH = 480;
 // Padding horizontal del <aside> (p-8 = 2rem por lado) que hay que sumar al ancho del texto.
 const SIDEBAR_PADDING_X = 64;
 
-export function AppShell({ activeTab, onTabChange, children }: AppShellProps) {
+export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }: AppShellProps) {
   const { user, logout } = useAuth();
   const { data: week } = useFetch(() => api.get<AgendaResponse>(`/agenda/week/${todayIso()}`), []);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
@@ -149,6 +160,8 @@ export function AppShell({ activeTab, onTabChange, children }: AppShellProps) {
                 <div className="size-8 shrink-0 rounded-full bg-primary" />
                 <span className="truncate text-xl font-semibold tracking-tight">Life Organizer</span>
               </div>
+
+              <GlobalSearch onNavigate={onSearchNavigate} />
 
               <nav className="flex flex-col gap-1">
                 {NAV.map((item) => (
@@ -257,6 +270,145 @@ export function AppShell({ activeTab, onTabChange, children }: AppShellProps) {
         <main className="p-6 lg:p-12">{children}</main>
       </div>
     </div>
+  );
+}
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Búsqueda global entre eventos, tareas, notas y proyectos. Al elegir un resultado, navega a
+ * la sección correspondiente y le pasa un `SearchFocus` — cada página destino decide qué hacer
+ * con él (abrir el diálogo del evento, expandir la tarjeta de la tarea, abrir el cuaderno del
+ * proyecto...), ver `DashboardPage`.
+ */
+function GlobalSearch({ onNavigate }: { onNavigate: (tab: Tab, focus: SearchFocus) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResults | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const data = await api.get<SearchResults>(`/search?q=${encodeURIComponent(trimmed)}`);
+        setResults(data);
+      } finally {
+        setLoading(false);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  // Cierra el desplegable al clicar fuera.
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  const pick = (tab: Tab, focus: SearchFocus) => {
+    onNavigate(tab, focus);
+    setOpen(false);
+    setQuery("");
+    setResults(null);
+  };
+
+  const hasResults =
+    results && (results.events.length > 0 || results.tasks.length > 0 || results.notes.length > 0 || results.projects.length > 0);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        placeholder="🔎 Buscar en todo..."
+        className="field-input w-full text-sm"
+      />
+
+      {open && query.trim().length >= 2 && (
+        <div className="absolute left-0 top-full z-20 mt-2 max-h-96 w-full overflow-y-auto rounded-2xl border border-border bg-card p-2 shadow-[var(--shadow-soft)]">
+          {loading ? (
+            <p className="p-3 text-center text-xs text-muted-foreground">Buscando...</p>
+          ) : !hasResults ? (
+            <p className="p-3 text-center text-xs text-muted-foreground">Sin resultados para "{query.trim()}".</p>
+          ) : (
+            <div className="space-y-3">
+              {results!.events.length > 0 && (
+                <SearchGroup label="Eventos">
+                  {results!.events.map((e) => (
+                    <SearchResultRow
+                      key={`event-${e.id}`}
+                      title={e.title}
+                      subtitle={`${new Date(e.startTime).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}${e.isRecurring ? " · recurrente" : ""}`}
+                      onClick={() => pick("agenda", { type: "event", id: e.id, startTime: e.startTime })}
+                    />
+                  ))}
+                </SearchGroup>
+              )}
+              {results!.tasks.length > 0 && (
+                <SearchGroup label="Tareas">
+                  {results!.tasks.map((t) => (
+                    <SearchResultRow key={`task-${t.id}`} title={t.title} onClick={() => pick("planificador", { type: "task", id: t.id })} />
+                  ))}
+                </SearchGroup>
+              )}
+              {results!.notes.length > 0 && (
+                <SearchGroup label="Notas">
+                  {results!.notes.map((n) => (
+                    <SearchResultRow key={`note-${n.id}`} title={n.content} onClick={() => pick("agenda", { type: "note", id: n.id })} />
+                  ))}
+                </SearchGroup>
+              )}
+              {results!.projects.length > 0 && (
+                <SearchGroup label="Proyectos">
+                  {results!.projects.map((p) => (
+                    <SearchResultRow key={`project-${p.id}`} title={p.title} onClick={() => pick("proyectos", { type: "project", id: p.id })} />
+                  ))}
+                </SearchGroup>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
+      <ul>{children}</ul>
+    </div>
+  );
+}
+
+function SearchResultRow({ title, subtitle, onClick }: { title: string; subtitle?: string; onClick: () => void }) {
+  return (
+    <li>
+      <button onClick={onClick} className="w-full cursor-pointer truncate rounded-xl px-2 py-1.5 text-left text-sm hover:bg-muted">
+        {title}
+        {subtitle && <span className="ml-2 text-xs text-muted-foreground">{subtitle}</span>}
+      </button>
+    </li>
   );
 }
 

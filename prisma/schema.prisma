@@ -32,6 +32,7 @@ model User {
   notes         Note[]
   habits        Habit[]
   habitLogs     HabitLog[]
+  syncTombstones SyncTombstone[]
 }
 
 model Event {
@@ -45,13 +46,43 @@ model Event {
   location         String?
   isRecurring      Boolean  @default(false)
   recurringPattern String? // "weekly", "biweekly", "monthly"
+  // Antelación(es) de aviso, en minutos (p.ej. [15, 1440] = 15 min y 1 día antes). Sustituye el
+  // recordatorio fijo de ~30 min que antes generaba `notificationService` para todos los eventos
+  // por igual — cada evento configura los suyos, y puede tener varios o ninguno ([]).
+  reminderMinutesBefore Int[] @default([30])
+  // Invitados: lista simple de nombres/emails sin flujo de invitación/aceptación (la app sigue
+  // siendo mono-usuario) — solo para llevar constancia de quién viene al evento.
+  guests           String[] @default([])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exceptions EventException[]
 
   @@index([userId])
   @@index([userId, startTime])
+}
+
+// Excepción a UNA ocurrencia concreta de una serie recurrente — mover o cancelar esa ocurrencia
+// sin tocar el resto de la serie ni la plantilla. `originalStartTime` es el startTime que
+// `expandRecurringEvent` habría calculado para ella de no existir la excepción; sirve de
+// identificador estable de "qué ocurrencia es" incluso después de moverla (ver utils/recurrence.ts).
+// Único (eventId, originalStartTime): como mucho una excepción por ocurrencia — pasar de "moved"
+// a "cancelled" es un update sobre la misma fila, no una fila nueva.
+model EventException {
+  id                Int       @id @default(autoincrement())
+  eventId           Int
+  originalStartTime DateTime
+  status            String // "moved" | "cancelled"
+  newStartTime      DateTime?
+  newEndTime        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, originalStartTime])
+  @@index([eventId])
 }
 
 model Goal {
@@ -150,6 +181,10 @@ model Project {
   user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   tasks ProjectTask[]
   pages ProjectPage[]
+  // Tareas del Planificador (tablero kanban) vinculadas a este proyecto — distinto de `tasks`
+  // (ProjectTask, el checklist de la "libreta" del proyecto). Vínculo opcional: una tarea del
+  // planificador puede no pertenecer a ningún proyecto.
+  plannerTasks Task[]
 
   @@index([userId])
 }
@@ -218,19 +253,45 @@ model HobbySession {
 // `order` es un float para poder insertar una tarea entre otras dos sin tener que
 // renumerar el resto de la columna (orden = punto medio entre las tarjetas vecinas).
 model Task {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   userId      Int
+  projectId   Int? // vínculo opcional a un Project — ver comentario en Project.plannerTasks
   title       String
   description String?
-  status      String   @default("todo") // "todo" | "in_progress" | "done"
-  priority    String   @default("medium") // "low" | "medium" | "high"
-  order       Float    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String    @default("todo") // "todo" | "in_progress" | "done"
+  priority    String    @default("medium") // "low" | "medium" | "high"
+  order       Float     @default(0)
+  dueDate     DateTime? // fecha límite; dispara un recordatorio (ver notificationService.createTaskDueReminders)
+  tags        String[]  @default([])
+  estimatedMinutes Int? // estimación previa, en minutos
+  actualMinutes    Int  @default(0) // acumulado real registrado vía POST /planner/tasks/:id/time
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subtasks Subtask[]
 
   @@index([userId, status])
+  @@index([userId, dueDate])
+  @@index([projectId])
+}
+
+// Checklist dentro de una tarea del planificador (subtareas). Sin `order` propio: son listas
+// cortas que se reordenan poco, así que basta con el orden de creación (`id`/`createdAt`).
+model Subtask {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  title     String
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  // Cursor de sincronización (ver syncService.ts) — se edita in-place (título/completed), así
+  // que necesita su propio "qué cambió desde X", a diferencia de HabitLog (solo alta/baja).
+  updatedAt DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
 }
 
 // Notas rápidas de la Agenda: apuntes sueltos sin fecha ni hora (recordatorios tipo post-it),
@@ -241,6 +302,7 @@ model Note {
   content   String
   checked   Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // ver comentario en Subtask.updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -256,6 +318,7 @@ model Habit {
   title     String
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // ver comentario en Subtask.updatedAt
 
   user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs HabitLog[]
@@ -283,14 +346,20 @@ model HabitLog {
 model Notification {
   id        Int      @id @default(autoincrement())
   userId    Int
-  type      String // "event_reminder" | "goal_at_risk"
+  type      String // "event_reminder" | "goal_at_risk" | "task_due"
   title     String
   message   String
-  relatedId Int? // eventId (series) o goalId, según `type`
+  relatedId Int? // eventId (series), goalId o taskId, según `type`
   // Para "event_reminder": el startTime de la ocurrencia concreta que generó el aviso
   // (los eventos recurrentes no materializan una fila por ocurrencia — ver utils/recurrence.ts —
   // así que esto es lo que distingue un recordatorio de "el lunes" de uno de "el martes siguiente").
   occurrenceAt DateTime?
+  // Solo relevante para type="event_reminder": con cuántos minutos de antelación se generó ESTE
+  // aviso concreto (ver Event.reminderMinutesBefore). Un evento puede tener varios avisos
+  // configurados (15 min y 1 día antes, por ejemplo) para la MISMA ocurrencia — sin este campo,
+  // ambos compartirían (relatedId, occurrenceAt) y la deduplicación descartaría el segundo por
+  // "duplicado" cuando en realidad es un aviso distinto.
+  offsetMinutesBefore Int?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -298,4 +367,23 @@ model Notification {
 
   @@index([userId, read])
   @@index([type, relatedId, occurrenceAt])
+}
+
+// Rastro de borrados para la sincronización offline del móvil (ver syncService.ts): los deletes
+// de esta app son siempre hard deletes (prisma.X.delete), así que sin esto un cliente que
+// llevara tiempo desconectado nunca se enteraría de que una fila desapareció — el pull de sync
+// devuelve estas filas junto a los cambios normales para que el móvil borre su copia local.
+// Solo cubre los modelos de la Fase 1 de sync (Event/EventException, Task/Subtask, Note,
+// Habit/HabitLog) — el resto de módulos (Finanzas, Proyectos, Hobbies, Objetivos...) no
+// sincroniza con el móvil todavía y sus deletes no generan tombstone.
+model SyncTombstone {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  entityType String // "event" | "eventException" | "task" | "subtask" | "note" | "habit" | "habitLog"
+  entityId   Int
+  deletedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt])
 }

@@ -2,6 +2,11 @@ import Joi from "joi";
 
 const EVENT_TYPES = ["work", "study", "gym", "meeting", "free"];
 const RECURRING_PATTERNS = ["weekly", "biweekly", "monthly"];
+const EXCEPTION_ACTIONS = ["moved", "cancelled"];
+// Máx. 1 semana de antelación (10080 min) y como mucho 5 avisos por evento — de sobra para
+// "15 min antes" + "1 día antes" y alguna combinación más, sin permitir listas absurdas.
+const reminderMinutesBeforeSchema = Joi.array().items(Joi.number().integer().min(1).max(10080)).max(5);
+const guestsSchema = Joi.array().items(Joi.string().trim().min(1).max(120)).max(30);
 
 export const dateParamSchema = Joi.object({
   date: Joi.string()
@@ -12,6 +17,11 @@ export const dateParamSchema = Joi.object({
 
 export const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
+});
+
+export const exceptionParamSchema = Joi.object({
+  id: Joi.number().integer().positive().required(),
+  originalStartTime: Joi.date().iso().required(),
 });
 
 export const createEventSchema = Joi.object({
@@ -29,6 +39,8 @@ export const createEventSchema = Joi.object({
   recurringPattern: Joi.string()
     .valid(...RECURRING_PATTERNS)
     .when("isRecurring", { is: true, then: Joi.required(), otherwise: Joi.optional().allow(null) }),
+  reminderMinutesBefore: reminderMinutesBeforeSchema,
+  guests: guestsSchema,
 }).options({ stripUnknown: true });
 
 export const updateEventSchema = Joi.object({
@@ -40,6 +52,8 @@ export const updateEventSchema = Joi.object({
   location: Joi.string().max(200).allow(null, ""),
   isRecurring: Joi.boolean(),
   recurringPattern: Joi.string().valid(...RECURRING_PATTERNS).allow(null),
+  reminderMinutesBefore: reminderMinutesBeforeSchema,
+  guests: guestsSchema,
 })
   .min(1)
   .custom((value, helpers) => {
@@ -55,3 +69,20 @@ export const eventTypeQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(200).default(50),
 });
+
+export const importIcsSchema = Joi.object({
+  ics: Joi.string().min(1).max(2_000_000).required(),
+}).options({ stripUnknown: true });
+
+export const setExceptionSchema = Joi.object({
+  originalStartTime: Joi.date().iso().required(),
+  action: Joi.string()
+    .valid(...EXCEPTION_ACTIONS)
+    .required(),
+  newStartTime: Joi.date().iso().when("action", { is: "moved", then: Joi.required(), otherwise: Joi.forbidden() }),
+  newEndTime: Joi.date()
+    .iso()
+    .greater(Joi.ref("newStartTime"))
+    .when("action", { is: "moved", then: Joi.required(), otherwise: Joi.forbidden() })
+    .messages({ "date.greater": "newEndTime debe ser posterior a newStartTime" }),
+}).options({ stripUnknown: true });

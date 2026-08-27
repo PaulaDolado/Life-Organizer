@@ -1,5 +1,6 @@
 import { prisma } from "../config/database";
 import { ForbiddenError, NotFoundError } from "../utils/errorHandler";
+import { recordTombstone } from "./tombstoneService";
 
 // Cuántos días de historial devolvemos para la tira tipo mapa de calor del frontend.
 const HISTORY_DAYS = 30;
@@ -78,7 +79,13 @@ export async function updateHabit(userId: number, habitId: number, title: string
 
 export async function deleteHabit(userId: number, habitId: number) {
   await findOwnedHabit(userId, habitId);
-  await prisma.habit.delete({ where: { id: habitId } });
+  // Solo se deja tombstone del hábito, no de cada HabitLog que cae en cascada — el sync del
+  // móvil trata "hábito borrado" como "borra también sus registros locales", igual que hace la
+  // propia BD con el cascade (ver syncService.ts).
+  await prisma.$transaction([
+    prisma.habit.delete({ where: { id: habitId } }),
+    recordTombstone(prisma, userId, "habit", habitId),
+  ]);
 }
 
 /**
@@ -95,7 +102,10 @@ export async function toggleHabitDay(userId: number, habitId: number, dateStr?: 
   });
 
   if (existing) {
-    await prisma.habitLog.delete({ where: { id: existing.id } });
+    await prisma.$transaction([
+      prisma.habitLog.delete({ where: { id: existing.id } }),
+      recordTombstone(prisma, userId, "habitLog", existing.id),
+    ]);
     return { completed: false, date: dateKey(date) };
   }
 

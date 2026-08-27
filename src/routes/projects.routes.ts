@@ -47,6 +47,20 @@ router.post("/", validate(createProjectSchema), projectsController.createProject
 
 /**
  * @openapi
+ * /projects/recent-entries:
+ *   get:
+ *     tags: [Projects]
+ *     summary: Últimas páginas de libreta tocadas (creadas o editadas) en la última semana, de cualquier proyecto
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ entries: [...] }, como mucho 5" }
+ */
+// Ruta literal ANTES de "/:id" — si no, Express la interpretaría como GET /projects/:id con
+// id="recent-entries" y nunca llegaría aquí.
+router.get("/recent-entries", projectsController.listRecentEntries);
+
+/**
+ * @openapi
  * /projects/{id}:
  *   get:
  *     tags: [Projects]

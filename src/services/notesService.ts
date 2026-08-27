@@ -1,5 +1,6 @@
 import { prisma } from "../config/database";
 import { ForbiddenError, NotFoundError } from "../utils/errorHandler";
+import { recordTombstone } from "./tombstoneService";
 
 export async function listNotes(userId: number) {
   const notes = await prisma.note.findMany({
@@ -39,5 +40,8 @@ export async function updateNote(userId: number, noteId: number, input: UpdateNo
 
 export async function deleteNote(userId: number, noteId: number) {
   await findOwnedNote(userId, noteId);
-  await prisma.note.delete({ where: { id: noteId } });
+  await prisma.$transaction([
+    prisma.note.delete({ where: { id: noteId } }),
+    recordTombstone(prisma, userId, "note", noteId),
+  ]);
 }

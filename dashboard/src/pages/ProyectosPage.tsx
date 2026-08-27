@@ -14,11 +14,24 @@ const STATUS_LABELS: Record<Project["status"], string> = {
 };
 const STATUS_ORDER: Project["status"][] = ["idea", "en_curso", "pausado", "completado"];
 
-export function ProyectosPage() {
+export function ProyectosPage({
+  focusProjectId,
+  onFocusHandled,
+}: {
+  // Llegada desde un resultado de la búsqueda global (ver AppShell.GlobalSearch): abre
+  // directamente el cuaderno de este proyecto al montar.
+  focusProjectId?: number;
+  onFocusHandled?: () => void;
+} = {}) {
   const [title, setTitle] = useState("");
   const [quickNote, setQuickNote] = useState("");
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<number | null>(focusProjectId ?? null);
   const { data, loading, error, reload } = useFetch(() => api.get<{ projects: Project[] }>("/projects"), []);
+
+  useEffect(() => {
+    if (focusProjectId && onFocusHandled) onFocusHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
@@ -81,17 +94,21 @@ function NotebookCover({ project, dark, onOpen }: { project: Project; dark: bool
     <button
       onClick={onOpen}
       className={`relative flex cursor-pointer flex-col rounded-3xl pt-10 p-6 text-left transition-transform hover:-translate-y-1 ${
-        dark ? "bg-foreground text-background" : "border border-secondary bg-secondary"
+        dark ? "bg-cover text-background" : "border border-secondary bg-secondary"
       }`}
     >
-      <div aria-hidden className="absolute inset-x-0 top-0 flex -translate-y-1/2 justify-evenly px-8">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <span
-            key={i}
-            className={`size-4 rounded-full border-[3px] bg-background shadow-sm ${dark ? "border-foreground/40" : "border-muted-foreground/40"}`}
-          />
-        ))}
-      </div>
+      {/* Pestaña de carpesano de archivador: mismo color que la tapa (parte de una misma
+          silueta recortada, no una pieza aparte) — sobresale por encima del borde superior y
+          se solapa hacia dentro, como la lengüeta de una carpeta colgante. Sin sombra propia
+          (shadow-sm dibujaba una raya justo en el solape, delatando que son dos piezas) y con
+          el solape más largo que el resto del padding superior de la tapa, para que ningún
+          borde de la pestaña quede nunca a la vista dentro de la tarjeta. Pegada al margen
+          izquierdo (left-0) con solo la esquina interior redondeada — la exterior queda recta,
+          a ras del propio borde de la tarjeta, como una lengüeta real. */}
+      <div
+        aria-hidden
+        className={`absolute left-0 -top-4 h-10 w-24 rounded-tr-xl ${dark ? "bg-cover" : "bg-secondary"}`}
+      />
 
       <div className="flex items-start justify-between gap-4">
         <h2 className="font-serif text-2xl">{project.title}</h2>

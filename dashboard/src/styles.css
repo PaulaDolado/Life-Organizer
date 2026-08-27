@@ -29,6 +29,7 @@
   --color-negative: var(--negative);
   --color-warning: var(--warning);
   --color-habit: var(--habit);
+  --color-cover: var(--cover);
   --shadow-soft: 0 1px 2px oklch(0.284 0.008 59.3 / 0.04), 0 8px 24px -16px oklch(0.284 0.008 59.3 / 0.25);
 }
 
@@ -40,6 +41,11 @@
   --paper: oklch(0.969 0.005 67.8);
   --charcoal: oklch(0.284 0.008 59.3);
   --surface: oklch(1 0 0);
+  /* Tapa "de cuero" de las libretas de proyecto (NotebookCover en ProyectosPage) — antes
+     reutilizaba --charcoal (bg-foreground), pero ese tono es el mismo que el texto/UI oscura
+     de toda la app; se le dio un tono propio, más claro y con algo más de croma para que siga
+     leyéndose marrón (no gris) en vez de simplemente aclarar --charcoal globalmente. */
+  --cover: oklch(0.38 0.025 59.3);
   --hobby: oklch(0.758 0.159 55.9);
   --positive: oklch(0.529 0.033 148.2);
   --negative: oklch(0.55 0.16 30);
