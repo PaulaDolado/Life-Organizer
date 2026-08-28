@@ -4,7 +4,8 @@ import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage, EmptyState } from "../components/Feedback";
 import { RichTextEditor } from "../components/RichTextEditor";
-import { Project, ProjectPage } from "../types";
+import { exportPagesToPdf, exportPagesToWord } from "../utils/notebookExport";
+import { Project, ProjectPage, ProjectTask } from "../types";
 
 const STATUS_LABELS: Record<Project["status"], string> = {
   idea: "Idea",
@@ -124,10 +125,57 @@ function NotebookCover({ project, dark, onOpen }: { project: Project; dark: bool
   );
 }
 
+// Preferencia global (no por proyecto): si el usuario oculta la nota de "Apuntes rápidos" en
+// una libreta, se queda oculta en todas — es una nota de apoyo, no algo que se eche en falta
+// al cambiar de proyecto. Se guarda en localStorage para que sobreviva a recargar la página.
+const HIDE_QUICK_NOTES_KEY = "life-organizer:hide-quick-notes";
+
 function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; onBack: () => void; onChanged: () => void }) {
   const { data: project, loading, error, reload } = useFetch(() => api.get<Project>(`/projects/${projectId}`), [projectId]);
   const [note, setNote] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showQuickNotes, setShowQuickNotes] = useState(() => localStorage.getItem(HIDE_QUICK_NOTES_KEY) !== "1");
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [confirmingTaskId, setConfirmingTaskId] = useState<number | null>(null);
+
+  const toggleTaskCompleted = async (task: ProjectTask) => {
+    await api.put(`/projects/${projectId}/tasks/${task.id}/complete`, { completed: !task.completed });
+    reload();
+  };
+
+  const saveTaskTitle = async (taskId: number, title: string) => {
+    const trimmed = title.trim();
+    setEditingTaskId(null);
+    if (!trimmed) return; // vacío: se descarta el cambio, no se borra el apunte por accidente
+    await api.put(`/projects/${projectId}/tasks/${taskId}`, { title: trimmed });
+    reload();
+  };
+
+  const removeTask = async (taskId: number) => {
+    await api.delete(`/projects/${projectId}/tasks/${taskId}`);
+    setConfirmingTaskId(null);
+    reload();
+  };
+
+  // Igual que el borrado de páginas: primer click pide confirmación, segundo click (en el mismo
+  // aspa) borra de verdad; alejar el ratón cancela la confirmación pendiente.
+  const handleDeleteTaskClick = (e: React.MouseEvent, task: ProjectTask) => {
+    e.stopPropagation();
+    if (confirmingTaskId === task.id) {
+      removeTask(task.id);
+    } else {
+      setConfirmingTaskId(task.id);
+    }
+  };
+
+  const hideQuickNotes = () => {
+    localStorage.setItem(HIDE_QUICK_NOTES_KEY, "1");
+    setShowQuickNotes(false);
+  };
+  const restoreQuickNotes = () => {
+    localStorage.removeItem(HIDE_QUICK_NOTES_KEY);
+    setShowQuickNotes(true);
+  };
 
   const cycleStatus = async () => {
     if (!project) return;
@@ -165,65 +213,121 @@ function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; 
             </button>
           </div>
 
-          {/* Apuntes rápidos — lo primero que se ve al abrir la libreta. A la mitad del ancho:
-              son notas cortas tipo checklist, no necesitan estirarse a todo el ancho del cuaderno
-              como sí lo necesita el editor de Páginas. */}
-          <section className="mt-8 lg:max-w-[50%]">
-            <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">Apuntes rápidos</h2>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!note.trim()) return;
-                await api.post(`/projects/${projectId}/tasks`, { title: note.trim() });
-                setNote("");
-                reload();
-              }}
-              className="mb-4"
+          {!showQuickNotes && (
+            <button
+              onClick={restoreQuickNotes}
+              className="mt-4 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
             >
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Escribe un apunte rápido…"
-                className="field-input w-full"
-              />
-            </form>
+              + Mostrar apuntes rápidos
+            </button>
+          )}
 
-            {(project.tasks?.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">Aún no tienes apuntes en esta libreta.</p>
-            ) : (
-              <ul className="space-y-2">
-                {project.tasks?.map((t) => (
-                  <li key={t.id}>
-                    <button
-                      onClick={async () => {
-                        if (!t.completed) {
-                          await api.put(`/projects/${projectId}/tasks/${t.id}/complete`);
-                          reload();
-                        }
-                      }}
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left text-sm"
-                    >
-                      <span
-                        className={`flex size-4 shrink-0 items-center justify-center rounded-sm border text-[9px] ${
-                          t.completed ? "border-primary bg-primary/20 text-primary" : "border-foreground/30"
-                        }`}
+          {/* Páginas ocupa el ancho principal, como una libreta de verdad — ya no va metida en
+              un recuadro aparte. Apuntes rápidos pasa a ser una nota lateral, opcional: el
+              usuario puede ocultarla (botón ✕ de aquí abajo) y queda oculta en localStorage. */}
+          <div className={`mt-8 grid gap-8 ${showQuickNotes ? "lg:grid-cols-[1fr_280px]" : "grid-cols-1"}`}>
+            <section className={showQuickNotes ? "lg:order-1" : ""}>
+              <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">Páginas</h2>
+              <ProjectPages projectId={projectId} projectTitle={project.title} />
+            </section>
+
+            {showQuickNotes && (
+              <aside className="lg:order-2 lg:border-l lg:border-border lg:pl-8">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Apuntes rápidos</h2>
+                  <button
+                    onClick={hideQuickNotes}
+                    title="Ocultar apuntes rápidos"
+                    className="cursor-pointer text-xs text-muted-foreground opacity-60 hover:opacity-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!note.trim()) return;
+                    await api.post(`/projects/${projectId}/tasks`, { title: note.trim() });
+                    setNote("");
+                    reload();
+                  }}
+                  className="mb-4"
+                >
+                  <input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Escribe un apunte rápido…"
+                    className="field-input w-full"
+                  />
+                </form>
+
+                {(project.tasks?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aún no tienes apuntes en esta libreta.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {project.tasks?.map((t) => (
+                      <li
+                        key={t.id}
+                        className="group flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm"
                       >
-                        {t.completed ? "✓" : ""}
-                      </span>
-                      <span className={t.completed ? "line-through opacity-50" : ""}>{t.title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                        <button
+                          type="button"
+                          onClick={() => toggleTaskCompleted(t)}
+                          title={t.completed ? "Desmarcar" : "Marcar como hecho"}
+                          className={`flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm border text-[9px] transition-colors ${
+                            t.completed ? "border-primary bg-primary/20 text-primary" : "border-foreground/30 hover:border-primary/60"
+                          }`}
+                        >
+                          {t.completed ? "✓" : ""}
+                        </button>
 
-          {/* Páginas — el resto de la libreta, como un documento de texto con listas e imágenes */}
-          <section className="mt-10 border-t border-border pt-8">
-            <h2 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted-foreground">Páginas</h2>
-            <ProjectPages projectId={projectId} />
-          </section>
+                        {editingTaskId === t.id ? (
+                          <input
+                            autoFocus
+                            defaultValue={t.title}
+                            onBlur={(e) => saveTaskTitle(t.id, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              if (e.key === "Escape") setEditingTaskId(null);
+                            }}
+                            className="min-w-0 flex-1 border-b border-primary bg-transparent py-0.5 text-sm outline-none"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            title={t.completed ? undefined : "Click para editar"}
+                            onClick={() => {
+                              if (!t.completed) setEditingTaskId(t.id);
+                            }}
+                            className={`min-w-0 flex-1 truncate text-left ${
+                              t.completed ? "cursor-default text-muted-foreground line-through" : "cursor-text hover:text-primary"
+                            }`}
+                          >
+                            {t.title}
+                          </button>
+                        )}
+
+                        <span
+                          role="button"
+                          title={confirmingTaskId === t.id ? "Confirmar eliminar" : "Eliminar apunte"}
+                          onClick={(e) => handleDeleteTaskClick(e, t)}
+                          onMouseLeave={() => setConfirmingTaskId((id) => (id === t.id ? null : id))}
+                          className={`shrink-0 cursor-pointer text-xs transition-opacity ${
+                            confirmingTaskId === t.id
+                              ? "font-bold text-destructive opacity-100"
+                              : "opacity-0 group-hover:opacity-60 hover:!opacity-100"
+                          }`}
+                        >
+                          ✕
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </aside>
+            )}
+          </div>
 
           <div className="mt-8 flex items-center justify-between border-t border-border pt-6 text-xs text-muted-foreground">
             <span>
@@ -251,7 +355,7 @@ function ProjectNotebook({ projectId, onBack, onChanged }: { projectId: number; 
   );
 }
 
-function ProjectPages({ projectId }: { projectId: number }) {
+function ProjectPages({ projectId, projectTitle }: { projectId: number; projectTitle: string }) {
   const { data, loading, error, reload } = useFetch(
     () => api.get<{ pages: ProjectPage[] }>(`/projects/${projectId}/pages`),
     [projectId]
@@ -330,41 +434,65 @@ function ProjectPages({ projectId }: { projectId: number }) {
     }
   };
 
+  // La página abierta puede tener cambios sin confirmar aún en `pages` (el guardado del
+  // contenido está debounced 600ms, y el título se guarda al perder el foco), así que al
+  // exportar se sustituye por el estado local — es lo que el usuario ve en pantalla ahora mismo.
+  const currentPageForExport = (): { title: string; content: string } | null => {
+    if (selectedId === null) return null;
+    return { title: pageTitle.trim() || "Página sin título", content };
+  };
+
+  const allPagesForExport = (): { title: string; content: string }[] =>
+    pages.map((page) => (page.id === selectedId ? currentPageForExport()! : { title: page.title, content: page.content }));
+
+  const handleExport = (format: "pdf" | "word", scope: "current" | "all") => {
+    const exportPages = scope === "current" ? [currentPageForExport()].filter((p): p is { title: string; content: string } => p !== null) : allPagesForExport();
+    if (exportPages.length === 0) return;
+    const documentTitle = scope === "current" ? exportPages[0].title : projectTitle;
+    const subtitle = scope === "current" ? projectTitle : `Cuaderno de ${projectTitle}`;
+    if (format === "pdf") exportPagesToPdf(documentTitle, subtitle, exportPages);
+    else exportPagesToWord(documentTitle, subtitle, exportPages);
+  };
+
   if (loading) return <Loading label="Cargando páginas..." />;
   if (error) return <ErrorMessage message={error} />;
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {pages.map((page) => (
-          <button
-            key={page.id}
-            onClick={() => selectPage(page)}
-            className={`group relative cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 text-xs transition-colors ${
-              confirmingPageId === page.id
-                ? "border border-destructive bg-destructive/10 text-destructive"
-                : page.id === selectedId
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border text-muted-foreground hover:border-primary/30"
-            }`}
-          >
-            {page.title}
-            <span
-              role="button"
-              title={confirmingPageId === page.id ? "Confirmar eliminar" : "Eliminar página"}
-              onClick={(e) => handleDeleteClick(e, page)}
-              onMouseLeave={() => setConfirmingPageId((id) => (id === page.id ? null : id))}
-              className={`ml-2 cursor-pointer ${
-                confirmingPageId === page.id ? "font-bold opacity-100" : "opacity-60 hover:opacity-100"
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {pages.map((page) => (
+            <button
+              key={page.id}
+              onClick={() => selectPage(page)}
+              className={`group relative cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 text-xs transition-colors ${
+                confirmingPageId === page.id
+                  ? "border border-destructive bg-destructive/10 text-destructive"
+                  : page.id === selectedId
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border text-muted-foreground hover:border-primary/30"
               }`}
             >
-              ✕
-            </span>
+              {page.title}
+              <span
+                role="button"
+                title={confirmingPageId === page.id ? "Confirmar eliminar" : "Eliminar página"}
+                onClick={(e) => handleDeleteClick(e, page)}
+                onMouseLeave={() => setConfirmingPageId((id) => (id === page.id ? null : id))}
+                className={`ml-2 cursor-pointer ${
+                  confirmingPageId === page.id ? "font-bold opacity-100" : "opacity-60 hover:opacity-100"
+                }`}
+              >
+                ✕
+              </span>
+            </button>
+          ))}
+          <button onClick={addPage} className="cursor-pointer rounded-full border border-dashed border-border px-4 py-1.5 text-xs text-muted-foreground hover:border-primary/30 hover:text-foreground">
+            + Página
           </button>
-        ))}
-        <button onClick={addPage} className="cursor-pointer rounded-full border border-dashed border-border px-4 py-1.5 text-xs text-muted-foreground hover:border-primary/30 hover:text-foreground">
-          + Página
-        </button>
+        </div>
+
+        {pages.length > 0 && <ExportMenu onExport={handleExport} />}
       </div>
 
       {pages.length === 0 ? (
@@ -388,7 +516,7 @@ function ProjectPages({ projectId }: { projectId: number }) {
               setContent(html);
               savePage(selectedId, html);
             }}
-            placeholder="Escribe aquí… puedes usar listas, negrita, cursiva e insertar imágenes."
+            placeholder="Escribe aquí…"
           />
           <p className="mt-2 text-xs text-muted-foreground">
             {savingState === "saving" ? "Guardando..." : savingState === "saved" ? "Guardado" : ""}
@@ -396,5 +524,49 @@ function ProjectPages({ projectId }: { projectId: number }) {
         </>
       )}
     </div>
+  );
+}
+
+// Menú desplegable de exportación: PDF (vía diálogo de impresión del navegador) o Word (.doc),
+// cada uno para la página abierta o para el cuaderno completo. <details>/<summary> nativos en
+// vez de un menú hecho a mano con estado — se cierran solos al hacer clic fuera, sin JS extra.
+function ExportMenu({ onExport }: { onExport: (format: "pdf" | "word", scope: "current" | "all") => void }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  const choose = (format: "pdf" | "word", scope: "current" | "all") => {
+    onExport(format, scope);
+    if (detailsRef.current) detailsRef.current.open = false;
+  };
+
+  return (
+    <details ref={detailsRef} className="relative">
+      <summary
+        className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap rounded-full border border-border px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground [&::-webkit-details-marker]:hidden"
+      >
+        ⬇ Exportar
+      </summary>
+      <div className="absolute right-0 z-10 mt-2 w-56 overflow-hidden rounded-2xl border border-border bg-card py-1.5 shadow-lg">
+        <p className="px-4 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Esta página</p>
+        <ExportMenuItem label="Exportar a PDF" onClick={() => choose("pdf", "current")} />
+        <ExportMenuItem label="Exportar a Word" onClick={() => choose("word", "current")} />
+        <p className="mt-1 border-t border-border px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Todo el cuaderno
+        </p>
+        <ExportMenuItem label="Exportar a PDF" onClick={() => choose("pdf", "all")} />
+        <ExportMenuItem label="Exportar a Word" onClick={() => choose("word", "all")} />
+      </div>
+    </details>
+  );
+}
+
+function ExportMenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full cursor-pointer px-4 py-2 text-left text-sm text-foreground hover:bg-foreground/5"
+    >
+      {label}
+    </button>
   );
 }

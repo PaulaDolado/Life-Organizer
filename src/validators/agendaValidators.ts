@@ -1,7 +1,7 @@
 import Joi from "joi";
 
 const EVENT_TYPES = ["work", "study", "gym", "meeting", "free"];
-const RECURRING_PATTERNS = ["weekly", "biweekly", "monthly"];
+const RECURRING_PATTERNS = ["daily", "weekly", "biweekly", "monthly"];
 const EXCEPTION_ACTIONS = ["moved", "cancelled"];
 // Máx. 1 semana de antelación (10080 min) y como mucho 5 avisos por evento — de sobra para
 // "15 min antes" + "1 día antes" y alguna combinación más, sin permitir listas absurdas.

@@ -11,6 +11,7 @@ import {
   updateProjectSchema,
   createTaskSchema,
   updateTaskSchema,
+  setTaskCompletedSchema,
   createPageSchema,
   updatePageSchema,
 } from "../validators/projectsValidators";
@@ -141,15 +142,32 @@ router.put(
  * /projects/{id}/tasks/{taskId}/complete:
  *   put:
  *     tags: [Projects]
- *     summary: Marcar tarea como completada
+ *     summary: Marcar o desmarcar una tarea como completada
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200: { description: Tarea marcada como completada }
+ *       200: { description: Tarea actualizada }
  */
 router.put(
   "/:id/tasks/:taskId/complete",
   validate(projectTaskParamsSchema, "params"),
+  validate(setTaskCompletedSchema),
   projectsController.completeTask
+);
+
+/**
+ * @openapi
+ * /projects/{id}/tasks/{taskId}:
+ *   delete:
+ *     tags: [Projects]
+ *     summary: Elimina un apunte rápido (tarea) del proyecto
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Apunte eliminado }
+ */
+router.delete(
+  "/:id/tasks/:taskId",
+  validate(projectTaskParamsSchema, "params"),
+  projectsController.deleteTask
 );
 
 /**

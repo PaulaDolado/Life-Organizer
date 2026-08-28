@@ -5,10 +5,13 @@ export interface Pagination {
   pages: number;
 }
 
+// No hay `username` aparte: el nombre de usuario es el propio `email` con el que se inicia
+// sesión (ver ProfileDialog/AppShell).
 export interface User {
   id: number;
   email: string;
   name: string;
+  lastName?: string | null;
   timezone?: string;
 }
 
@@ -19,7 +22,7 @@ export interface AuthResponse {
 }
 
 export type EventType = "work" | "study" | "gym" | "meeting" | "free";
-export type RecurringPattern = "weekly" | "biweekly" | "monthly";
+export type RecurringPattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 export interface Event {
   id: number;
@@ -262,4 +265,16 @@ export interface IcsImportResult {
   created: number;
   skippedUnparsable: number;
   importedAsSingleOccurrence: number;
+}
+
+// Fila del horario semanal fijo (Agenda > Horario) — sin fechas, texto libre por día.
+export interface ScheduleRow {
+  id: number;
+  order: number;
+  timeLabel: string;
+  monday: string;
+  tuesday: string;
+  wednesday: string;
+  thursday: string;
+  friday: string;
 }

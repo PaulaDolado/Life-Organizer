@@ -2,7 +2,13 @@ import { Router } from "express";
 import * as authController from "../controllers/authController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 import { validate } from "../middlewares/validation";
-import { registerSchema, loginSchema, refreshSchema, updateProfileSchema } from "../validators/authValidators";
+import {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  updateProfileSchema,
+  changePasswordSchema,
+} from "../validators/authValidators";
 
 const router = Router();
 
@@ -90,5 +96,28 @@ router.post("/refresh", validate(refreshSchema), authController.refresh);
  */
 router.get("/me", authMiddleware, authController.getProfile);
 router.put("/me", authMiddleware, validate(updateProfileSchema), authController.updateProfile);
+
+/**
+ * @openapi
+ * /auth/me/password:
+ *   put:
+ *     tags: [Auth]
+ *     summary: Cambiar la contraseña del usuario autenticado
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword: { type: string }
+ *               newPassword: { type: string, minLength: 8 }
+ *     responses:
+ *       200: { description: Contraseña actualizada }
+ *       401: { description: La contraseña actual no es correcta }
+ */
+router.put("/me/password", authMiddleware, validate(changePasswordSchema), authController.changePassword);
 
 export default router;

@@ -2,9 +2,10 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useFetch } from "../hooks/useFetch";
 import { api } from "../api/client";
+import { ProfileDialog } from "./ProfileDialog";
 import { AgendaResponse, Notification, SearchResults } from "../types";
 
-export type Tab = "hoy" | "agenda" | "planificador" | "metas" | "finanzas" | "finanzas-ahorro" | "proyectos" | "hobbies";
+export type Tab = "hoy" | "agenda" | "planificador" | "horario" | "metas" | "finanzas" | "finanzas-ahorro" | "proyectos" | "hobbies";
 
 // A dónde navegar y qué destacar al hacer clic en un resultado de búsqueda global — cada página
 // destino decide qué hacer con `id` (abrir el diálogo, expandir la tarjeta, etc.) y llama a
@@ -26,7 +27,10 @@ const NAV: NavItem[] = [
   {
     key: "agenda",
     label: "Agenda",
-    children: [{ key: "planificador", label: "Planificador" }],
+    children: [
+      { key: "planificador", label: "Planificador" },
+      { key: "horario", label: "Horario" },
+    ],
   },
   { key: "metas", label: "Objetivos" },
   {
@@ -61,6 +65,7 @@ const SIDEBAR_PADDING_X = 64;
 
 export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }: AppShellProps) {
   const { user, logout } = useAuth();
+  const [profileOpen, setProfileOpen] = useState(false);
   const { data: week } = useFetch(() => api.get<AgendaResponse>(`/agenda/week/${todayIso()}`), []);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -216,7 +221,15 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
                 </div>
 
                 <div className="flex items-center justify-between rounded-2xl px-1 text-sm">
-                  <span className="truncate text-muted-foreground">{user?.name}</span>
+                  <button
+                    onClick={() => setProfileOpen(true)}
+                    title="Editar perfil"
+                    className="min-w-0 flex-1 cursor-pointer text-left text-muted-foreground hover:text-foreground"
+                  >
+                    <span className="block truncate">{user?.name}</span>
+                    {/* El "nombre de usuario" es el email de acceso, no un alias aparte. */}
+                    {user?.email && <span className="block truncate text-xs opacity-70">{user.email}</span>}
+                  </button>
                   <button
                     onClick={logout}
                     className="shrink-0 cursor-pointer text-xs font-medium text-muted-foreground hover:text-destructive"
@@ -269,6 +282,8 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
         </nav>
         <main className="p-6 lg:p-12">{children}</main>
       </div>
+
+      {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

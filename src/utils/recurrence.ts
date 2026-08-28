@@ -1,4 +1,10 @@
 import { addWeeks, addMonths } from "date-fns";
+// Import de submódulo, no del barrel "date-fns": por alguna razón (posible colisión de export *
+// en su index.d.ts con moduleResolution "node") tsc no reconoce `addDays` como miembro exportado
+// del paquete completo, aunque sí funciona en runtime y aunque el resto de funciones de esta
+// misma importación (addWeeks, addMonths) resuelven bien desde el barrel. El submódulo evita el
+// problema del todo: está declarado explícitamente en el "exports" de date-fns/package.json.
+import { addDays } from "date-fns/addDays";
 
 export interface RecurringEventLike {
   id: number;
@@ -31,8 +37,11 @@ export interface EventOccurrence<T> {
 }
 
 /** Límite de seguridad: nunca generar más de N ocurrencias en una sola expansión,
- * aunque el rango pedido fuera absurdamente amplio (evita loops largos con datos raros). */
-const MAX_OCCURRENCES = 520; // ~10 años en cadencia semanal
+ * aunque el rango pedido fuera absurdamente amplio (evita loops largos con datos raros).
+ * Calibrado para la cadencia más fina ("daily"): ~10 años a razón de una ocurrencia por día.
+ * Con cadencias más espaciadas (weekly/biweekly/monthly) el propio rango de fechas corta el
+ * bucle mucho antes en la práctica, así que un límite pensado para "daily" no les afecta. */
+const MAX_OCCURRENCES = 3660; // ~10 años en cadencia diaria
 
 /**
  * Calcula la ocurrencia número `n` (0 = la original) SIEMPRE a partir de `originalStart`,
@@ -43,6 +52,8 @@ const MAX_OCCURRENCES = 520; // ~10 años en cadencia semanal
  */
 function occurrenceAt(originalStart: Date, pattern: string, n: number): Date {
   switch (pattern) {
+    case "daily":
+      return addDays(originalStart, n);
     case "weekly":
       return addWeeks(originalStart, n);
     case "biweekly":

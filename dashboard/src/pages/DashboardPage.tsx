@@ -3,6 +3,7 @@ import { AppShell, SearchFocus, Tab } from "../components/AppShell";
 import { HoyPage } from "./HoyPage";
 import { AgendaPage } from "./AgendaPage";
 import { PlanificadorPage } from "./PlanificadorPage";
+import { SchedulePage } from "./SchedulePage";
 import { MetasPage } from "./MetasPage";
 import { FinanzasPage } from "./FinanzasPage";
 import { MetasAhorroPage } from "./MetasAhorroPage";
@@ -38,6 +39,7 @@ export function DashboardPage() {
       {activeTab === "planificador" && (
         <PlanificadorPage focusTaskId={focus?.type === "task" ? focus.id : undefined} onFocusHandled={clearFocus} />
       )}
+      {activeTab === "horario" && <SchedulePage />}
       {activeTab === "metas" && <MetasPage />}
       {activeTab === "finanzas" && <FinanzasPage />}
       {activeTab === "finanzas-ahorro" && <MetasAhorroPage />}

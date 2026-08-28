@@ -29,6 +29,7 @@ const TYPES: { value: EventType; label: string }[] = [
   { value: "free", label: "Libre" },
 ];
 const RECURRENCES: { value: RecurringPattern; label: string }[] = [
+  { value: "daily", label: "Cada día" },
   { value: "weekly", label: "Cada semana" },
   { value: "biweekly", label: "Cada 2 semanas" },
   { value: "monthly", label: "Cada mes" },
@@ -94,6 +95,13 @@ function localTimeOf(iso: string): string {
 
 // Traslada un evento a otro día de calendario conservando la hora y duración originales —
 // usado por el drag-and-drop de reprogramar (semana y mes).
+//
+// setUTCFullYear, no setFullYear: dayKeyOf/addDays/la cuadrícula de arriba trocean el día en
+// UTC puro (ver el comentario de addDays), así que el día "de destino" que ve este componente
+// es un día UTC. Si aquí se mutara en hora LOCAL del navegador, un evento cuya hora local caiga
+// cerca de medianoche (p.ej. 00:30 con timezone +2h → 22:30 UTC del día anterior) se movería al
+// día local correcto pero a un instante cuyo día UTC es el ANTERIOR al de destino — al recargar,
+// dayKeyOf lo volvería a colocar en la columna de al lado, un día desplazado del que se soltó.
 function shiftEventToDay(event: Event, targetDayKey: string): { startTime: string; endTime: string } {
   const origStart = new Date(event.startTime);
   const origEnd = new Date(event.endTime);
@@ -101,7 +109,7 @@ function shiftEventToDay(event: Event, targetDayKey: string): { startTime: strin
 
   const [y, m, d] = targetDayKey.split("-").map(Number);
   const newStart = new Date(origStart);
-  newStart.setFullYear(y, m - 1, d);
+  newStart.setUTCFullYear(y, m - 1, d);
   return { startTime: newStart.toISOString(), endTime: new Date(newStart.getTime() + durationMs).toISOString() };
 }
 
@@ -383,15 +391,20 @@ function EventCard({
   draggedId: string | null;
 }) {
   const dragKey = `${event.id}-${event.startTime}`;
+  // La categoría ya no se rotula con texto ("Trabajo", "Gimnasio"...) — el propio fondo de la
+  // tarjeta lleva el color de esa categoría (antes solo la etiqueta lo llevaba), así que sigue
+  // siendo distinguible de un vistazo sin ocupar espacio con el nombre. El nombre no desaparece
+  // del todo: queda como `title` (tooltip nativo al pasar el ratón) para no perder accesibilidad.
   return (
     <button
       draggable
+      title={TYPE_LABELS[event.type] ?? event.type}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onSelect}
-      className={`w-full cursor-grab rounded-xl border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-primary/30 active:cursor-grabbing ${
-        draggedId === dragKey ? "opacity-40" : ""
-      } ${compact ? "px-2 py-1" : ""}`}
+      className={`w-full cursor-grab rounded-xl border border-border/60 px-2.5 py-2 text-left transition-colors hover:border-primary/30 active:cursor-grabbing ${
+        TYPE_STYLES[event.type] ?? DEFAULT_TYPE_STYLE
+      } ${draggedId === dragKey ? "opacity-40" : ""} ${compact ? "px-2 py-1" : ""}`}
     >
       <p className={`truncate font-medium ${compact ? "text-[11px]" : "text-xs"}`}>
         {event.title}
@@ -399,17 +412,10 @@ function EventCard({
         {event.isException && " ✎"}
       </p>
       {!compact && (
-        <>
-          <span
-            className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_STYLES[event.type] ?? DEFAULT_TYPE_STYLE}`}
-          >
-            {TYPE_LABELS[event.type] ?? event.type}
-          </span>
-          <p className="mt-1.5 text-[10px] text-muted-foreground">
-            {new Date(event.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} –{" "}
-            {new Date(event.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </p>
-        </>
+        <p className="mt-1.5 text-[10px] opacity-70">
+          {new Date(event.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} –{" "}
+          {new Date(event.endTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </p>
       )}
     </button>
   );

@@ -19,8 +19,9 @@ Todos los listados (`/goals`, `/projects`, `/hobbies`, `/hobbies/category/:categ
 | POST | `/auth/register` | - | Registro. Body: `email`, `password` (min 8), `name`, `timezone?` (zona IANA, default `Europe/Madrid`) |
 | POST | `/auth/login` | - | Login, retorna `token` + `refreshToken` |
 | POST | `/auth/refresh` | - | Nuevo `token`+`refreshToken` a partir de un `refreshToken` válido |
-| GET | `/auth/me` | JWT | Perfil: `{ id, email, name, timezone }` |
-| PUT | `/auth/me` | JWT | Actualiza `name` y/o `timezone` |
+| GET | `/auth/me` | JWT | Perfil: `{ id, email, name, lastName, timezone }`. No hay `username` aparte: el nombre de usuario es el propio `email` |
+| PUT | `/auth/me` | JWT | Actualiza `name`, `lastName` (`null` para vaciarlo), `email` (el "nombre de usuario" — 409 si ya lo usa otra cuenta) y/o `timezone` |
+| PUT | `/auth/me/password` | JWT | Cambia la contraseña. Body: `currentPassword`, `newPassword` (min 8) |
 
 ## Agenda
 
@@ -30,7 +31,7 @@ Todos los listados (`/goals`, `/projects`, `/hobbies`, `/hobbies/category/:categ
 | GET | `/agenda/week/:date` | JWT | Eventos de la semana que contiene esa fecha (lunes-domingo). Mismos filtros |
 | GET | `/agenda/month/:date` | JWT | Eventos del mes que contiene esa fecha. Mismos filtros (`?limit=` por defecto 200) |
 | GET | `/agenda/free-time/:date` | JWT | Huecos libres del día (08:00–22:00 local) + sugerencias de tareas del Planificador que encajan (ver más abajo) |
-| POST | `/agenda/events` | JWT | Crea evento. `isRecurring`+`recurringPattern` (`weekly`\|`biweekly`\|`monthly`) para series recurrentes. `reminderMinutesBefore` (minutos, default `[30]`) y `guests` (nombres/emails, default `[]`) opcionales |
+| POST | `/agenda/events` | JWT | Crea evento. `isRecurring`+`recurringPattern` (`daily`\|`weekly`\|`biweekly`\|`monthly`) para series recurrentes. `reminderMinutesBefore` (minutos, default `[30]`) y `guests` (nombres/emails, default `[]`) opcionales |
 | PUT | `/agenda/events/:id` | JWT | Edita — afecta a **toda la serie** si es recurrente |
 | DELETE | `/agenda/events/:id` | JWT | Elimina — **toda la serie** si es recurrente |
 | POST | `/agenda/events/:id/exceptions` | JWT | Mueve (`action: "moved"` + `newStartTime`/`newEndTime`) o cancela (`action: "cancelled"`) **una sola ocurrencia** de un evento recurrente, sin tocar el resto de la serie. `originalStartTime` identifica la ocurrencia (400 si el evento no es recurrente) |
@@ -44,7 +45,19 @@ Los recordatorios de evento (`Notification` tipo `event_reminder`) usan `reminde
 
 `GET /agenda/free-time/:date` devuelve `{ freeBlocks: [{start, end, durationMinutes}], suggestions: [{block, task}] }`: los huecos ≥15 min entre eventos dentro de 08:00–22:00, y para cada uno (en orden cronológico) la tarea pendiente del Planificador de mayor prioridad con `estimatedMinutes` que quepa y no se haya sugerido ya en otro hueco.
 
-El `.ics` exportado incluye RRULE (recurrencia), EXDATE (ocurrencias canceladas) y un VEVENT con RECURRENCE-ID por cada ocurrencia movida — ver `utils/ics.ts`. El import es best-effort: mapea `FREQ=WEEKLY`/`WEEKLY;INTERVAL=2`/`MONTHLY` a `weekly`/`biweekly`/`monthly` (otra recurrencia se importa como evento único) y no reconstruye excepciones (`RECURRENCE-ID` se ignora).
+El `.ics` exportado incluye RRULE (recurrencia), EXDATE (ocurrencias canceladas) y un VEVENT con RECURRENCE-ID por cada ocurrencia movida — ver `utils/ics.ts`. El import es best-effort: mapea `FREQ=DAILY`/`WEEKLY`/`WEEKLY;INTERVAL=2`/`MONTHLY` a `daily`/`weekly`/`biweekly`/`monthly` (otra recurrencia se importa como evento único) y no reconstruye excepciones (`RECURRENCE-ID` se ignora).
+
+## Horario (Schedule)
+
+Horario semanal fijo de texto libre (p.ej. de universidad) — Agenda > Horario, junto a Planificador. A diferencia de los eventos de Agenda, no tiene fechas: es la misma plantilla lunes-viernes semana tras semana, y cada celda es texto libre que el usuario rellena a mano (sin concepto de "asignatura" estructurado).
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/schedule` | JWT | `{ rows: [...] }`, ordenadas por `order` |
+| POST | `/schedule` | JWT | Añade una fila (franja horaria) al final. Body: `timeLabel?` (texto libre, ej. `"08:00 - 10:00"`) |
+| PUT | `/schedule/:id` | JWT | Edita `timeLabel` y/o cualquiera de `monday`/`tuesday`/`wednesday`/`thursday`/`friday` (texto libre, máx. 200 car. cada una) |
+| DELETE | `/schedule/:id` | JWT | Elimina una fila |
+| PUT | `/schedule/:id/move` | JWT | `{ direction: "up" \| "down" }` — intercambia el orden con la fila vecina (no-op si ya está en el extremo) |
 
 ## Hoy (Today)
 
@@ -147,7 +160,8 @@ Una meta que pasa su `periodEnd` sin completarse queda `expired=true` automátic
 | GET | `/projects/:id/progress` | JWT | Solo el `{ total, completed, percent }` |
 | POST | `/projects/:id/tasks` | JWT | Agrega tarea |
 | PUT | `/projects/:id/tasks/:taskId` | JWT | Edita el título |
-| PUT | `/projects/:id/tasks/:taskId/complete` | JWT | Marca completada (no hay endpoint para "descompletar") |
+| PUT | `/projects/:id/tasks/:taskId/complete` | JWT | `{ completed: boolean }` — marca o desmarca |
+| DELETE | `\projects:id/tasks/:taskId` | JWT | Elimina un apunte rápido |
 
 ## Planificador (Planner)
 

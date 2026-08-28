@@ -46,6 +46,13 @@ export const updateTaskSchema = Joi.object({
   title: Joi.string().min(1).max(200).required(),
 }).options({ stripUnknown: true });
 
+// `completed` es obligatorio (no un toggle implícito en el servidor): el cliente siempre sabe
+// a qué estado quiere pasar el apunte, así un doble-click accidental no lo deja en un estado
+// indeseado por casualidad.
+export const setTaskCompletedSchema = Joi.object({
+  completed: Joi.boolean().required(),
+}).options({ stripUnknown: true });
+
 export const projectPageParamsSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
   pageId: Joi.number().integer().positive().required(),

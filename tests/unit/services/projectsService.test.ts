@@ -8,7 +8,13 @@ jest.mock("../../../src/config/database", () => ({
       delete: jest.fn(),
       count: jest.fn(),
     },
-    projectTask: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    projectTask: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     projectPage: { findMany: jest.fn() },
   },
 }));
@@ -19,7 +25,7 @@ import { ForbiddenError, NotFoundError } from "../../../src/utils/errorHandler";
 
 const prismaMock = prisma as unknown as {
   project: { findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; count: jest.Mock };
-  projectTask: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+  projectTask: { create: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock; update: jest.Mock; delete: jest.Mock };
   projectPage: { findMany: jest.Mock };
 };
 
@@ -66,12 +72,12 @@ describe("projectsService", () => {
     });
   });
 
-  describe("completeTask", () => {
+  describe("setTaskCompleted", () => {
     it("lanza NotFoundError si la tarea no pertenece al proyecto indicado", async () => {
       prismaMock.project.findUnique.mockResolvedValue(ownedProject);
       prismaMock.projectTask.findUnique.mockResolvedValue({ id: 5, projectId: 999 });
 
-      await expect(projectsService.completeTask(1, 1, 5)).rejects.toThrow(NotFoundError);
+      await expect(projectsService.setTaskCompleted(1, 1, 5, true)).rejects.toThrow(NotFoundError);
     });
 
     it("marca la tarea como completada con completedAt", async () => {
@@ -81,10 +87,42 @@ describe("projectsService", () => {
         Promise.resolve({ id: 5, projectId: 1, ...data })
       );
 
-      const task = await projectsService.completeTask(1, 1, 5);
+      const task = await projectsService.setTaskCompleted(1, 1, 5, true);
 
       expect(task.completed).toBe(true);
       expect(task.completedAt).toBeInstanceOf(Date);
+    });
+
+    it("desmarca la tarea y limpia completedAt", async () => {
+      prismaMock.project.findUnique.mockResolvedValue(ownedProject);
+      prismaMock.projectTask.findUnique.mockResolvedValue({ id: 5, projectId: 1, completed: true });
+      prismaMock.projectTask.update.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 5, projectId: 1, ...data })
+      );
+
+      const task = await projectsService.setTaskCompleted(1, 1, 5, false);
+
+      expect(task.completed).toBe(false);
+      expect(task.completedAt).toBeNull();
+    });
+  });
+
+  describe("deleteTask", () => {
+    it("lanza NotFoundError si la tarea no pertenece al proyecto indicado", async () => {
+      prismaMock.project.findUnique.mockResolvedValue(ownedProject);
+      prismaMock.projectTask.findUnique.mockResolvedValue({ id: 5, projectId: 999 });
+
+      await expect(projectsService.deleteTask(1, 1, 5)).rejects.toThrow(NotFoundError);
+    });
+
+    it("elimina la tarea", async () => {
+      prismaMock.project.findUnique.mockResolvedValue(ownedProject);
+      prismaMock.projectTask.findUnique.mockResolvedValue({ id: 5, projectId: 1 });
+      prismaMock.projectTask.delete.mockResolvedValue({ id: 5 });
+
+      await projectsService.deleteTask(1, 1, 5);
+
+      expect(prismaMock.projectTask.delete).toHaveBeenCalledWith({ where: { id: 5 } });
     });
   });
 

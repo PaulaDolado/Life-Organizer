@@ -170,12 +170,17 @@ export async function deletePage(userId: number, projectId: number, pageId: numb
   await prisma.projectPage.delete({ where: { id: pageId } });
 }
 
-export async function completeTask(userId: number, projectId: number, taskId: number) {
+export async function setTaskCompleted(userId: number, projectId: number, taskId: number, completed: boolean) {
   await findOwnedTask(userId, projectId, taskId);
   return prisma.projectTask.update({
     where: { id: taskId },
-    data: { completed: true, completedAt: new Date() },
+    data: { completed, completedAt: completed ? new Date() : null },
   });
+}
+
+export async function deleteTask(userId: number, projectId: number, taskId: number) {
+  await findOwnedTask(userId, projectId, taskId);
+  await prisma.projectTask.delete({ where: { id: taskId } });
 }
 
 const RECENT_ENTRIES_LIMIT = 5;

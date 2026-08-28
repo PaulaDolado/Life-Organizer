@@ -24,6 +24,19 @@ describe("expandRecurringEvent", () => {
     expect(occurrences).toEqual([]);
   });
 
+  it("genera una ocurrencia por día para un patrón daily", () => {
+    const event = makeEvent({ recurringPattern: "daily" });
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-07T23:59:59.000Z"));
+
+    expect(occurrences.map((o) => o.startTime.toISOString().slice(0, 10))).toEqual([
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
+      "2026-08-06",
+      "2026-08-07",
+    ]);
+  });
+
   it("genera una ocurrencia por semana para un patrón weekly", () => {
     const event = makeEvent({ recurringPattern: "weekly" });
     // Rango de 3 semanas a partir del evento original

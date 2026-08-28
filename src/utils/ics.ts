@@ -44,6 +44,7 @@ function foldLine(line: string): string {
 }
 
 const PATTERN_TO_RRULE: Record<string, string> = {
+  daily: "FREQ=DAILY",
   weekly: "FREQ=WEEKLY",
   biweekly: "FREQ=WEEKLY;INTERVAL=2",
   monthly: "FREQ=MONTHLY",
@@ -207,7 +208,10 @@ function buildEventFromFields(fields: IcsFields, fallbackTimezone: string): Pars
     }
     const freq = parts.FREQ;
     const interval = Number(parts.INTERVAL ?? "1");
-    if (freq === "WEEKLY" && interval === 1) {
+    if (freq === "DAILY" && interval === 1) {
+      isRecurring = true;
+      recurringPattern = "daily";
+    } else if (freq === "WEEKLY" && interval === 1) {
       isRecurring = true;
       recurringPattern = "weekly";
     } else if (freq === "WEEKLY" && interval === 2) {

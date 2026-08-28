@@ -48,3 +48,14 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
     next(error);
   }
 }
+
+export async function changePassword(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const { currentPassword, newPassword } = req.body;
+    await authService.changePassword(userId, currentPassword, newPassword);
+    res.json({ message: "Contraseña actualizada" });
+  } catch (error) {
+    next(error);
+  }
+}

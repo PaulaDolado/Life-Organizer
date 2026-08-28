@@ -15,6 +15,7 @@ model User {
   email        String   @unique
   password     String // bcrypt hash
   name         String
+  lastName     String?
   timezone     String   @default("Europe/Madrid")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -33,6 +34,7 @@ model User {
   habits        Habit[]
   habitLogs     HabitLog[]
   syncTombstones SyncTombstone[]
+  scheduleRows  ScheduleRow[]
 }
 
 model Event {
@@ -45,7 +47,7 @@ model Event {
   endTime          DateTime
   location         String?
   isRecurring      Boolean  @default(false)
-  recurringPattern String? // "weekly", "biweekly", "monthly"
+  recurringPattern String? // "daily", "weekly", "biweekly", "monthly"
   // Antelación(es) de aviso, en minutos (p.ej. [15, 1440] = 15 min y 1 día antes). Sustituye el
   // recordatorio fijo de ~30 min que antes generaba `notificationService` para todos los eventos
   // por igual — cada evento configura los suyos, y puede tener varios o ninguno ([]).
@@ -386,4 +388,26 @@ model SyncTombstone {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, deletedAt])
+}
+
+// Horario semanal fijo (p.ej. de universidad) — Agenda > Horario. Cada fila es un bloque
+// horario (una franja) con una celda de texto libre por día de lunes a viernes; a diferencia
+// de Event, no tiene fecha: es la misma plantilla semana tras semana, y el usuario rellena cada
+// celda a mano (no hay concepto de "asignatura" estructurado, solo texto libre por celda).
+model ScheduleRow {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  order     Int      @default(0)
+  timeLabel String   @default("") // texto libre, p.ej. "08:00 - 10:00"
+  monday    String   @default("")
+  tuesday   String   @default("")
+  wednesday String   @default("")
+  thursday  String   @default("")
+  friday    String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, order])
 }

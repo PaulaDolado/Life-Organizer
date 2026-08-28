@@ -17,6 +17,10 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, timezone?: string) => Promise<void>;
   logout: () => void;
+  // No llama a la API — solo sincroniza React state + localStorage con un perfil ya guardado en
+  // el backend (ver ProfileDialog: hace el PUT /auth/me ella misma y luego llama a esto). Deja
+  // token/refreshToken intactos, a diferencia de `persist` (que se usa solo en login/register).
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -87,8 +91,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    const stored = loadStoredAuth();
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      if (stored) localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...stored, user: next }));
+      return next;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, error, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, error, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

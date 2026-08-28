@@ -43,6 +43,9 @@ describe("buildIcs", () => {
   });
 
   it("mapea el patrón de recurrencia a RRULE", () => {
+    const daily = buildIcs([
+      { id: 1, title: "A", startTime: new Date(), endTime: new Date(Date.now() + 3600000), isRecurring: true, recurringPattern: "daily" },
+    ]);
     const weekly = buildIcs([
       { id: 1, title: "A", startTime: new Date(), endTime: new Date(Date.now() + 3600000), isRecurring: true, recurringPattern: "weekly" },
     ]);
@@ -53,6 +56,7 @@ describe("buildIcs", () => {
       { id: 1, title: "A", startTime: new Date(), endTime: new Date(Date.now() + 3600000), isRecurring: true, recurringPattern: "monthly" },
     ]);
 
+    expect(daily).toContain("RRULE:FREQ=DAILY");
     expect(weekly).toContain("RRULE:FREQ=WEEKLY");
     expect(biweekly).toContain("RRULE:FREQ=WEEKLY;INTERVAL=2");
     expect(monthly).toContain("RRULE:FREQ=MONTHLY");
@@ -143,6 +147,16 @@ describe("parseIcs", () => {
     expect(events[0].description).toBe("línea1\nlínea2");
   });
 
+  it("mapea RRULE FREQ=DAILY a daily", () => {
+    const raw = ["BEGIN:VEVENT", "SUMMARY:Diario", "DTSTART:20260824T160000Z", "RRULE:FREQ=DAILY", "END:VEVENT"].join("\r\n");
+
+    const { events } = parseIcs(raw, MADRID);
+
+    expect(events[0].isRecurring).toBe(true);
+    expect(events[0].recurringPattern).toBe("daily");
+    expect(events[0].unsupportedRecurrence).toBe(false);
+  });
+
   it("mapea RRULE FREQ=WEEKLY/INTERVAL=2 a biweekly", () => {
     const raw = ["BEGIN:VEVENT", "SUMMARY:Quincenal", "DTSTART:20260824T160000Z", "RRULE:FREQ=WEEKLY;INTERVAL=2", "END:VEVENT"].join("\r\n");
 
@@ -153,8 +167,8 @@ describe("parseIcs", () => {
     expect(events[0].unsupportedRecurrence).toBe(false);
   });
 
-  it("marca unsupportedRecurrence en un RRULE que no mapea a nuestros patrones (p.ej. DAILY)", () => {
-    const raw = ["BEGIN:VEVENT", "SUMMARY:Diario", "DTSTART:20260824T160000Z", "RRULE:FREQ=DAILY", "END:VEVENT"].join("\r\n");
+  it("marca unsupportedRecurrence en un RRULE que no mapea a nuestros patrones (p.ej. YEARLY)", () => {
+    const raw = ["BEGIN:VEVENT", "SUMMARY:Anual", "DTSTART:20260824T160000Z", "RRULE:FREQ=YEARLY", "END:VEVENT"].join("\r\n");
 
     const { events } = parseIcs(raw, MADRID);
 

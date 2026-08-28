@@ -17,6 +17,7 @@ erDiagram
     User ||--o{ Hobby : "crea"
     User ||--o{ HobbySession : "registra"
     User ||--o{ Notification : "recibe"
+    User ||--o{ ScheduleRow : "rellena"
     Goal ||--o{ GoalProgress : "acumula"
     Project ||--o{ ProjectTask : "contiene"
     Hobby ||--o{ HobbySession : "registra"
@@ -26,6 +27,7 @@ erDiagram
         string email UK
         string password
         string name
+        string lastName
         string timezone
         datetime createdAt
         datetime updatedAt

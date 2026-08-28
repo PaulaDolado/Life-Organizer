@@ -110,12 +110,25 @@ export async function completeTask(req: AuthRequest, res: Response, next: NextFu
     const userId = req.userId as number;
     const id = parseInt(req.params.id, 10);
     const taskId = parseInt(req.params.taskId, 10);
-    const task = await projectsService.completeTask(userId, id, taskId);
+    const task = await projectsService.setTaskCompleted(userId, id, taskId, req.body.completed);
     res.json(task);
   } catch (error) {
     next(error);
   }
 }
+
+export async function deleteTask(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const id = parseInt(req.params.id, 10);
+    const taskId = parseInt(req.params.taskId, 10);
+    await projectsService.deleteTask(userId, id, taskId);
+    res.json({ message: "Apunte eliminado" });
+  } catch (error) {
+    next(error);
+  }
+}
+
 
 export async function listPages(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {

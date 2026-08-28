@@ -17,6 +17,7 @@ API REST de organización personal integral: **Agenda · Metas · Finanzas · Pr
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Guía paso a paso para desplegar en Railway o Render |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Convenciones de código, checklist para añadir un módulo nuevo |
 | [dashboard/README.md](dashboard/README.md) | Dashboard demo en React — cómo correrlo localmente |
+| [mobile/README.md](mobile/README.md) | App móvil (Expo/React Native) offline con SQLite — Fase 1, cómo correrla localmente |
 
 ## Stack
 
@@ -62,6 +63,7 @@ Detalle completo (qué cubre cada carpeta, bugs reales encontrados por los tests
 - [x] **Sprint 5** — CI/CD, deployment config (Railway/Render), dashboard demo en React
 - [x] **Post-Sprint-5** — Notificaciones (recordatorios + alertas), eventos recurrentes reales, paginación en todos los listados, timezone del usuario aplicada en Agenda, expiración/auto-renovación de metas, documentación separada en archivos dedicados
 - [x] **Rediseño del dashboard** — nueva identidad visual (paleta oklch, Tailwind v4, Outfit + Instrument Serif) adaptada de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23), con las 5 páginas (Agenda, Metas, Finanzas, Proyectos, Hobbies) más notificaciones — ver [dashboard/README.md](dashboard/README.md#origen-del-diseño-y-qué-se-adaptó) para qué se adoptó tal cual y qué se adaptó a nuestra API
+- [x] **Sync offline + app móvil (Fase 1)** — `/sync/pull` y `/sync/push` (tombstones para borrados, last-write-wins para conflictos) cubriendo Eventos, Tareas/Subtareas, Notas y Hábitos; app Expo/React Native nueva en [mobile/](mobile/README.md) con SQLite local y una pantalla "Hoy" que funciona sin conexión — ver [API.md](API.md#sincronización-sync) para el contrato y qué módulos quedan fuera de esta fase
 
 ## Nota de seguridad conocida (dependencias)
 

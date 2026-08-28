@@ -56,7 +56,8 @@ describe("Projects Endpoints", () => {
 
       await request(app)
         .put(`/projects/${project.body.id}/tasks/${task1.body.id}/complete`)
-        .set(authed());
+        .set(authed())
+        .send({ completed: true });
 
       const progress = await request(app).get(`/projects/${project.body.id}/progress`).set(authed());
       expect(progress.status).toBe(200);
@@ -67,6 +68,44 @@ describe("Projects Endpoints", () => {
       const detail = await request(app).get(`/projects/${project.body.id}`).set(authed());
       expect(detail.body.tasks).toHaveLength(2);
       expect(detail.body.progress.percent).toBe(50);
+    });
+
+    it("debería permitir desmarcar una tarea ya completada", async () => {
+      const project = await request(app).post("/projects").set(authed()).send({ title: "Desmarcable" });
+      const task = await request(app)
+        .post(`/projects/${project.body.id}/tasks`)
+        .set(authed())
+        .send({ title: "Revisar" });
+
+      await request(app)
+        .put(`/projects/${project.body.id}/tasks/${task.body.id}/complete`)
+        .set(authed())
+        .send({ completed: true });
+
+      const uncompleted = await request(app)
+        .put(`/projects/${project.body.id}/tasks/${task.body.id}/complete`)
+        .set(authed())
+        .send({ completed: false });
+
+      expect(uncompleted.status).toBe(200);
+      expect(uncompleted.body.completed).toBe(false);
+      expect(uncompleted.body.completedAt).toBeNull();
+    });
+
+    it("debería eliminar una tarea", async () => {
+      const project = await request(app).post("/projects").set(authed()).send({ title: "Con apuntes" });
+      const task = await request(app)
+        .post(`/projects/${project.body.id}/tasks`)
+        .set(authed())
+        .send({ title: "Borrar esto" });
+
+      const deleted = await request(app)
+        .delete(`/projects/${project.body.id}/tasks/${task.body.id}`)
+        .set(authed());
+      expect(deleted.status).toBe(200);
+
+      const detail = await request(app).get(`/projects/${project.body.id}`).set(authed());
+      expect(detail.body.tasks).toHaveLength(0);
     });
 
     it("debería editar el título de una tarea", async () => {

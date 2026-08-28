@@ -56,6 +56,24 @@ describe("agendaValidators", () => {
       });
       expect(error).toBeUndefined();
     });
+
+    it("acepta recurringPattern daily", () => {
+      const { error } = createEventSchema.validate({
+        ...base,
+        isRecurring: true,
+        recurringPattern: "daily",
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it("rechaza un recurringPattern no soportado", () => {
+      const { error } = createEventSchema.validate({
+        ...base,
+        isRecurring: true,
+        recurringPattern: "yearly",
+      });
+      expect(error).toBeDefined();
+    });
   });
 
   describe("updateEventSchema", () => {

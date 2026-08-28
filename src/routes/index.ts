@@ -12,6 +12,8 @@ import notificationsRoutes from "./notifications.routes";
 import todayRoutes from "./today.routes";
 import searchRoutes from "./search.routes";
 import syncRoutes from "./sync.routes";
+import linkPreviewRoutes from "./linkPreview.routes";
+import scheduleRoutes from "./schedule.routes";
 
 const router = Router();
 
@@ -28,5 +30,7 @@ router.use("/notifications", notificationsRoutes);
 router.use("/today", todayRoutes);
 router.use("/search", searchRoutes);
 router.use("/sync", syncRoutes);
+router.use("/link-preview", linkPreviewRoutes);
+router.use("/schedule", scheduleRoutes);
 
 export default router;
