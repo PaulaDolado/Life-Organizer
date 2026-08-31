@@ -5,6 +5,8 @@ import { api, ApiError } from "../api/client";
 import { ProfileDialog } from "./ProfileDialog";
 import { AgendaResponse, CustomPageSummary, CustomPageTemplate, Notification, SearchResults } from "../types";
 import { CUSTOM_PAGE_TEMPLATES } from "../utils/customPageTemplates";
+import clipClosedUrl from "../assets/clipClosed.png";
+import clipOpenUrl from "../assets/clipOpen.png";
 
 export type StaticTab =
   | "hoy"
@@ -94,6 +96,12 @@ const DEFAULT_SIDEBAR_WIDTH = 288; // w-72, el ancho original
 const MAX_SIDEBAR_WIDTH = 480;
 // Padding horizontal del <aside> (p-8 = 2rem por lado) que hay que sumar al ancho del texto.
 const SIDEBAR_PADDING_X = 64;
+
+// Foto real del clip (ver botón de esconder/mostrar el menú) — clipClosed.png cuando el menú
+// está desplegado (el clip "sujeta" la barra lateral, ver comentario junto al botón), clipOpen.png
+// cuando está colapsado (no hay "papel" que sujetar). Ancho de render fijo; el alto sale solo de
+// mantener la proporción real de cada imagen (293x197 y 264x131 respectivamente).
+const CLIP_CLOSED_WIDTH = 72;
 
 export function AppShell({
   activeTab,
@@ -392,14 +400,28 @@ export function AppShell({
           </div>
         )}
 
-        {/* Pestaña siempre visible para esconder/mostrar el menú, aunque esté colapsado. */}
+        {/* Botón siempre visible para esconder/mostrar el menú, aunque esté colapsado — la foto
+            real de un clip de papel (no un dibujo propio: los intentos en SVG no acababan de
+            parecerse). Con el menú desplegado se ve clipClosed.png centrado sobre el borde real
+            de la barra lateral (como sujetándola); colapsado no hay "hoja" que sujetar, así que
+            se ve clipOpen.png suelto, pegado al borde izquierdo. `fixed` (no `sticky` con margen
+            negativo) a propósito: un margen negativo tan grande sobre un elemento dentro del
+            flex de la barra lateral encogía el ancho de toda la fila; al sacarlo del flujo con
+            `fixed`, su posición no afecta al del resto. */}
         <button
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Mostrar menú" : "Ocultar menú"}
           title={collapsed ? "Mostrar menú" : "Ocultar menú"}
-          className="sticky top-1/2 z-10 flex h-16 w-4 shrink-0 -translate-y-1/2 cursor-pointer items-center justify-center self-start rounded-r-full border border-l-0 border-border bg-card text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          style={{ left: collapsed ? 16 : sidebarWidth - 14, top: 40 }}
+          className={`fixed z-20 -translate-y-1/2 cursor-pointer bg-transparent transition-transform hover:scale-105 ${
+            collapsed ? "" : "-translate-x-1/2"
+          }`}
         >
-          {collapsed ? "›" : "‹"}
+          {collapsed ? (
+            <img src={clipOpenUrl} alt="" width={56} className="drop-shadow-md" />
+          ) : (
+            <img src={clipClosedUrl} alt="" width={CLIP_CLOSED_WIDTH} className="drop-shadow-md" />
+          )}
         </button>
       </div>
 
@@ -768,3 +790,4 @@ function CreatePageModal({
     </div>
   );
 }
+
