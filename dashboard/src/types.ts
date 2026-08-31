@@ -27,7 +27,7 @@ export interface AuthResponse {
   user: User;
 }
 
-export type EventType = "work" | "study" | "gym" | "meeting" | "free";
+export type EventType = "work" | "study" | "gym" | "meeting" | "free" | "evento" | "cita";
 export type RecurringPattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 export interface Event {

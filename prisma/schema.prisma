@@ -62,7 +62,7 @@ model Event {
   userId           Int
   title            String
   description      String?
-  type             String // "work", "study", "gym", "meeting", "free"
+  type             String // "work", "study", "gym", "meeting", "free", "evento", "cita"
   startTime        DateTime
   endTime          DateTime
   location         String?

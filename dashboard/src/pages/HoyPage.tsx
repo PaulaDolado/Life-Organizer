@@ -11,6 +11,8 @@ const TYPE_LABELS: Record<string, string> = {
   study: "Estudio",
   gym: "Gimnasio",
   meeting: "Reunión",
+  evento: "Evento",
+  cita: "Cita",
   free: "Libre",
 };
 const TYPE_STYLES: Record<string, string> = {
@@ -18,6 +20,8 @@ const TYPE_STYLES: Record<string, string> = {
   study: "bg-secondary/70 text-foreground",
   gym: "bg-hobby/15 text-hobby",
   meeting: "bg-warning/15 text-warning",
+  evento: "bg-positive/15 text-positive",
+  cita: "bg-habit/15 text-habit",
   free: "bg-muted text-muted-foreground",
 };
 

@@ -29,6 +29,8 @@ const TYPES: { value: EventType; label: string }[] = [
   { value: "study", label: "Estudio" },
   { value: "gym", label: "Gimnasio" },
   { value: "meeting", label: "Reunión" },
+  { value: "evento", label: "Evento" },
+  { value: "cita", label: "Cita" },
   { value: "free", label: "Libre" },
 ];
 const RECURRENCES: { value: RecurringPattern; label: string }[] = [
@@ -52,6 +54,8 @@ const TYPE_STYLES: Record<string, string> = {
   study: "bg-secondary/70 text-foreground",
   gym: "bg-hobby/15 text-hobby",
   meeting: "bg-warning/15 text-warning",
+  evento: "bg-positive/15 text-positive",
+  cita: "bg-habit/15 text-habit",
   free: "bg-muted text-muted-foreground",
 };
 const DEFAULT_TYPE_STYLE = "bg-muted text-muted-foreground";
@@ -60,6 +64,8 @@ const TYPE_LABELS: Record<string, string> = {
   study: "Estudio",
   gym: "Gimnasio",
   meeting: "Reunión",
+  evento: "Evento",
+  cita: "Cita",
   free: "Libre",
 };
 
