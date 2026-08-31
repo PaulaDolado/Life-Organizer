@@ -14,6 +14,7 @@ describe("Finance Endpoints", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "finance",
       email: "finance@example.com",
       password: "Password123",
       name: "Finance User",
@@ -130,6 +131,7 @@ describe("Finance Endpoints", () => {
       });
 
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro_finance",
         email: "otro-finance@example.com",
         password: "Password123",
         name: "Otro",

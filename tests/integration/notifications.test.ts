@@ -14,6 +14,7 @@ describe("Notifications Endpoints", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "notifications",
       email: "notifications@example.com",
       password: "Password123",
       name: "Notif User",
@@ -131,6 +132,7 @@ describe("Notifications Endpoints", () => {
       const id = list.body.notifications[0].id;
 
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro_notif",
         email: "otro-notif@example.com",
         password: "Password123",
         name: "Otro",

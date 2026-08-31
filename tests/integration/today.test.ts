@@ -18,6 +18,7 @@ describe("Today Endpoint", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "today",
       email: "today@example.com",
       password: "Password123",
       name: "Today User",
@@ -91,6 +92,7 @@ describe("Today Endpoint", () => {
 
     it("no incluye páginas de otro usuario", async () => {
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro_today",
         email: "otro-today@example.com",
         password: "Password123",
         name: "Otro",

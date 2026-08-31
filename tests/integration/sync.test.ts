@@ -17,6 +17,7 @@ describe("Sync Endpoints", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "sync",
       email: "sync@example.com",
       password: "Password123",
       name: "Sync User",

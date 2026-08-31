@@ -13,9 +13,23 @@ datasource db {
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
+  // Alias de login, alternativo al email — se elige al registrarse. Junto con `email`, ambos
+  // sirven para iniciar sesión (ver authService.login: busca por email O por username).
+  username     String   @unique
   password     String // bcrypt hash
   name         String
   lastName     String?
+  // Cuándo se cambió el username por última vez — null si nunca se ha cambiado desde el
+  // registro. Sirve para limitar el cambio a 1 vez cada 15 días (antes aplicaba al email,
+  // antes de separar ambos conceptos: ver comentario en authService.ts).
+  usernameChangedAt DateTime?
+  // Verificación de email: null hasta que se confirma. El login NO exige tenerlo verificado
+  // (se puede usar la app desde el registro), pero el frontend muestra un aviso hasta que se
+  // confirme. Cambiar el email (a diferencia del username) resetea esto a null y manda un
+  // nuevo email de verificación — no tiene cooldown propio, la verificación ya frena el abuso.
+  emailVerifiedAt            DateTime?
+  emailVerificationTokenHash String?
+  emailVerificationExpiresAt DateTime?
   timezone     String   @default("Europe/Madrid")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -35,6 +49,8 @@ model User {
   habitLogs     HabitLog[]
   syncTombstones SyncTombstone[]
   scheduleRows  ScheduleRow[]
+
+  @@index([emailVerificationTokenHash])
 }
 
 model Event {

@@ -11,6 +11,7 @@ async function main() {
     update: {},
     create: {
       email: "demo@lifeorganizer.dev",
+      username: "demo",
       password,
       name: "Usuario Demo",
     },

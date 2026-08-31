@@ -13,6 +13,7 @@ describe("Search Endpoint", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "search",
       email: "search@example.com",
       password: "Password123",
       name: "Search User",
@@ -67,6 +68,7 @@ describe("Search Endpoint", () => {
     await request(app).post("/notes").set(authed()).send({ content: "nota compartible palabra-unica-xyz" });
 
     const otherUser = await request(app).post("/auth/register").send({
+      username: "otro_search",
       email: "otro-search@example.com",
       password: "Password123",
       name: "Otro",

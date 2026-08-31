@@ -11,6 +11,7 @@ describe("Agenda Endpoints", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "agenda",
       email: "agenda@example.com",
       password: "Password123",
       name: "Agenda User",
@@ -172,6 +173,7 @@ describe("Agenda Endpoints", () => {
         });
 
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro",
         email: "otro@example.com",
         password: "Password123",
         name: "Otro",
@@ -392,6 +394,7 @@ describe("Agenda Endpoints", () => {
 
     it("no incluye eventos de otro usuario en la exportación", async () => {
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro_ics",
         email: "otro-ics@example.com",
         password: "Password123",
         name: "Otro",

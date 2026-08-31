@@ -25,9 +25,14 @@ erDiagram
     User {
         int id PK
         string email UK
+        string username UK
         string password
         string name
         string lastName
+        datetime usernameChangedAt
+        datetime emailVerifiedAt
+        string emailVerificationTokenHash
+        datetime emailVerificationExpiresAt
         string timezone
         datetime createdAt
         datetime updatedAt
@@ -123,6 +128,8 @@ Todas las relaciones son `onDelete: Cascade` — borrar un `User` borra en casca
 
 ### User
 Cuenta de usuario. `password` es el hash bcrypt, nunca el texto plano. `timezone` (zona IANA, default `Europe/Madrid`) determina cómo se calculan los límites de "hoy"/"esta semana" en Agenda — ver [ARCHITECTURE.md](ARCHITECTURE.md#zonas-horarias). Se puede fijar al registrarse o cambiar después vía `PUT /auth/me`.
+
+`username` y `email` son dos alias de login independientes (ver `authService.login`: busca por cualquiera de los dos vía `OR`). `usernameChangedAt` implementa el cooldown de 15 días para cambiar el username (ver `authService.ts`); el email no tiene cooldown propio, pero cambiarlo pone `emailVerifiedAt` a `null` y genera un `emailVerificationTokenHash`/`emailVerificationExpiresAt` nuevos (hash sha256 de un token aleatorio de 32 bytes, válido 24h — ver `src/utils/verificationToken.ts`). El login no exige el email verificado, solo se usa para mostrar un aviso en el frontend. El "envío" del email de verificación (`src/utils/mailer.ts`) es por ahora solo un log con el enlace — no hay proveedor SMTP configurado.
 
 ### Event (Agenda)
 Un bloque de tiempo. `type` es texto libre validado contra una lista fija en el validador (no un enum de Prisma — mantenerlo como `String` evita una migración cada vez que se añade un tipo). Un evento recurrente (`isRecurring=true`) sigue siendo **una sola fila**: no se materializan las ocurrencias futuras, se calculan en memoria al consultar la agenda (`src/utils/recurrence.ts`). Índice compuesto `[userId, startTime]` para las consultas de día/semana.

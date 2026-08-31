@@ -13,6 +13,7 @@ describe("Planner Endpoints", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "planner",
       email: "planner@example.com",
       password: "Password123",
       name: "Planner User",
@@ -75,6 +76,7 @@ describe("Planner Endpoints", () => {
 
     it("rechaza vincular un proyecto de otro usuario (403)", async () => {
       const otherUser = await request(app).post("/auth/register").send({
+        username: "otro",
         email: "otro@example.com",
         password: "Password123",
         name: "Otro",

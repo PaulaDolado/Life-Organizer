@@ -44,3 +44,12 @@ export class ConflictError extends AppError {
     super(message, 409);
   }
 }
+
+/** La acción en sí es válida, pero el usuario ya la hizo hace muy poco (p.ej. cambiar el
+ * nombre de usuario/email más de 1 vez cada 15 días) — no es un error de validación del
+ * request, así que no encaja en 400, y tampoco es un conflicto de estado (409). */
+export class TooManyRequestsError extends AppError {
+  constructor(message = "Has hecho esto hace muy poco, inténtalo más tarde") {
+    super(message, 429);
+  }
+}

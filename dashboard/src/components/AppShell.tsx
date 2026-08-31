@@ -227,8 +227,18 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
                     className="min-w-0 flex-1 cursor-pointer text-left text-muted-foreground hover:text-foreground"
                   >
                     <span className="block truncate">{user?.name}</span>
-                    {/* El "nombre de usuario" es el email de acceso, no un alias aparte. */}
-                    {user?.email && <span className="block truncate text-xs opacity-70">{user.email}</span>}
+                    {/* Refleja al instante cualquier cambio guardado en el diálogo de perfil,
+                        porque ambos leen el mismo `user` del contexto (ver ProfileDialog). */}
+                    {user?.username && (
+                      <span className="block truncate text-xs opacity-70">
+                        @{user.username}
+                        {user.emailVerified === false && (
+                          <span title="Email sin verificar — revisa tu perfil" className="ml-1">
+                            ⚠️
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={logout}

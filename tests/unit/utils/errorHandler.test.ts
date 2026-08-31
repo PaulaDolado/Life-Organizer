@@ -5,6 +5,7 @@ import {
   ForbiddenError,
   ValidationError,
   ConflictError,
+  TooManyRequestsError,
 } from "../../../src/utils/errorHandler";
 
 describe("error classes", () => {
@@ -26,6 +27,7 @@ describe("error classes", () => {
     [ForbiddenError, 403, "Acceso denegado"],
     [ValidationError, 400, "Datos inválidos"],
     [ConflictError, 409, "Conflicto con el estado actual del recurso"],
+    [TooManyRequestsError, 429, "Has hecho esto hace muy poco, inténtalo más tarde"],
   ])("%p debería tener statusCode %i y mensaje por defecto", (ErrorClass, statusCode, defaultMessage) => {
     const error = new (ErrorClass as new (msg?: string) => AppError)();
     expect(error.statusCode).toBe(statusCode);

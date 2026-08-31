@@ -12,6 +12,7 @@ describe("Goal expiry / auto-renew (vía processExpiredGoals)", () => {
     await prisma.user.deleteMany({});
 
     const response = await request(app).post("/auth/register").send({
+      username: "expiry",
       email: "expiry@example.com",
       password: "Password123",
       name: "Expiry User",

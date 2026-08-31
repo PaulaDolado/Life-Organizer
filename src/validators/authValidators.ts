@@ -1,23 +1,35 @@
 import Joi from "joi";
 import { isValidTimezone } from "../utils/timezone";
 
-export const registerSchema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().min(8).max(72).required(),
-  name: Joi.string().min(2).max(100).required(),
-  // Opcional: si no se indica, Prisma aplica el default del schema ("Europe/Madrid").
-  timezone: Joi.string()
+// Minúsculas, números, puntos y guiones bajos — igual que el username que hubo temporalmente
+// como alias del email (ver historial); ahora es un campo propio, obligatorio al registrarse.
+export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/;
+const usernameMessage = "El nombre de usuario debe tener 3-30 caracteres: minúsculas, números, puntos o guiones bajos";
+
+function timezoneSchema() {
+  return Joi.string()
     .custom((value, helpers) => {
       if (!isValidTimezone(value)) {
         return helpers.error("any.invalid");
       }
       return value;
     })
-    .messages({ "any.invalid": "timezone debe ser una zona horaria IANA válida (ej. 'Europe/Madrid')" }),
+    .messages({ "any.invalid": "timezone debe ser una zona horaria IANA válida (ej. 'Europe/Madrid')" });
+}
+
+export const registerSchema = Joi.object({
+  username: Joi.string().pattern(USERNAME_PATTERN).required().messages({ "string.pattern.base": usernameMessage }),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).max(72).required(),
+  name: Joi.string().min(2).max(100).required(),
+  // Opcional: si no se indica, Prisma aplica el default del schema ("Europe/Madrid").
+  timezone: timezoneSchema(),
 });
 
+// Login por email O por username indistintamente — `identifier` es lo que sea que el usuario
+// haya escrito, el service decide con un OR en la query cuál de los dos es.
 export const loginSchema = Joi.object({
-  email: Joi.string().email().required(),
+  identifier: Joi.string().required(),
   password: Joi.string().required(),
 });
 
@@ -28,15 +40,11 @@ export const refreshSchema = Joi.object({
 export const updateProfileSchema = Joi.object({
   name: Joi.string().min(2).max(100),
   lastName: Joi.string().min(1).max(100).allow(null, ""),
-  // El "nombre de usuario" es el propio email de acceso — cambiarlo aquí cambia con qué email
-  // se inicia sesión a partir de ahora (el service comprueba que esté libre).
+  username: Joi.string().pattern(USERNAME_PATTERN).messages({ "string.pattern.base": usernameMessage }),
+  // Cambiar el email no tiene el cooldown de 15 días (ese es del username) — pero sí dispara
+  // una nueva verificación (ver authService.updateProfile).
   email: Joi.string().email(),
-  timezone: Joi.string().custom((value, helpers) => {
-    if (!isValidTimezone(value)) {
-      return helpers.error("any.invalid");
-    }
-    return value;
-  }),
+  timezone: timezoneSchema(),
 })
   .min(1)
   .messages({ "any.invalid": "timezone debe ser una zona horaria IANA válida (ej. 'Europe/Madrid')" });
@@ -47,4 +55,8 @@ export const updateProfileSchema = Joi.object({
 export const changePasswordSchema = Joi.object({
   currentPassword: Joi.string().required(),
   newPassword: Joi.string().min(8).max(72).required(),
+});
+
+export const verifyEmailSchema = Joi.object({
+  token: Joi.string().required(),
 });

@@ -59,3 +59,22 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
     next(error);
   }
 }
+
+export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const profile = await authService.verifyEmail(req.body.token);
+    res.json(profile);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resendVerification(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    await authService.resendVerification(userId);
+    res.json({ message: "Si tu email no estaba ya verificado, te hemos mandado un enlace nuevo" });
+  } catch (error) {
+    next(error);
+  }
+}

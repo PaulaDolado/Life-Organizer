@@ -2,7 +2,7 @@
 
 Documentación interactiva (Swagger/OpenAPI) disponible en `/api-docs` con el servidor corriendo. Esto es la referencia estática, para leer sin levantar nada.
 
-Todas las rutas salvo `/auth/register`, `/auth/login` y `/auth/refresh` requieren `Authorization: Bearer <token>`. Todas devuelven 401 sin token válido, y los endpoints de edición/borrado devuelven 403 si el recurso no pertenece al usuario autenticado.
+Todas las rutas salvo `/auth/register`, `/auth/login`, `/auth/refresh` y `/auth/verify-email` requieren `Authorization: Bearer <token>`. Todas devuelven 401 sin token válido, y los endpoints de edición/borrado devuelven 403 si el recurso no pertenece al usuario autenticado.
 
 ## Paginación
 
@@ -16,12 +16,18 @@ Todos los listados (`/goals`, `/projects`, `/hobbies`, `/hobbies/category/:categ
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/auth/register` | - | Registro. Body: `email`, `password` (min 8), `name`, `timezone?` (zona IANA, default `Europe/Madrid`) |
-| POST | `/auth/login` | - | Login, retorna `token` + `refreshToken` |
+| POST | `/auth/register` | - | Registro. Body: `username` (3-30, minúsculas/números/`_`/`.`), `email`, `password` (min 8), `name`, `timezone?` (zona IANA, default `Europe/Madrid`). Manda un email de verificación (409 si el email o el username ya existen) |
+| POST | `/auth/login` | - | Login. Body: `identifier` (username **o** email, indistintamente), `password`. No exige el email verificado — retorna `token` + `refreshToken` igualmente |
 | POST | `/auth/refresh` | - | Nuevo `token`+`refreshToken` a partir de un `refreshToken` válido |
-| GET | `/auth/me` | JWT | Perfil: `{ id, email, name, lastName, timezone }`. No hay `username` aparte: el nombre de usuario es el propio `email` |
-| PUT | `/auth/me` | JWT | Actualiza `name`, `lastName` (`null` para vaciarlo), `email` (el "nombre de usuario" — 409 si ya lo usa otra cuenta) y/o `timezone` |
+| POST | `/auth/verify-email` | - | Body: `token` (el de la URL del email). Marca el email como verificado; 400 si el token no existe o caducó (24h) |
+| POST | `/auth/resend-verification` | JWT | Manda un email de verificación nuevo; no-op silencioso si ya estaba verificado |
+| GET | `/auth/me` | JWT | Perfil: `{ id, email, username, name, lastName, timezone, emailVerified, nextUsernameChangeAllowedAt }` |
+| PUT | `/auth/me` | JWT | Actualiza `name`, `lastName` (`null` para vaciarlo), `username` (409 si ya lo usa otra cuenta, **429** si ya se cambió hace menos de 15 días), `email` (409 si ya lo usa otra cuenta; sin cooldown propio, pero resetea `emailVerified` a `false` y manda un email de verificación nuevo) y/o `timezone` |
 | PUT | `/auth/me/password` | JWT | Cambia la contraseña. Body: `currentPassword`, `newPassword` (min 8) |
+
+`nextUsernameChangeAllowedAt` (`User.usernameChangedAt` + 15 días) viene en `null` si el usuario nunca cambió el username o si el cooldown ya pasó — el frontend lo usa para deshabilitar el campo y mostrar cuándo podrá volver a cambiarlo, sin tener que duplicar los "15 días" en el cliente. El cooldown solo aplica al `username`, no al `email` (que en cambio exige reverificación cada vez que cambia). Ni cambiar el username ni el email invalidan los tokens ya emitidos (el JWT solo se valida por `userId`).
+
+El "envío" de emails de verificación (`src/utils/mailer.ts`) es solo un `logger.info` con el enlace por ahora — no hay proveedor SMTP configurado. Cuando se conecte uno de verdad, es la única función que hace falta cambiar.
 
 ## Agenda
 

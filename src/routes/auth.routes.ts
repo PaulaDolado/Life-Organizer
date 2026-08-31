@@ -8,6 +8,7 @@ import {
   refreshSchema,
   updateProfileSchema,
   changePasswordSchema,
+  verifyEmailSchema,
 } from "../validators/authValidators";
 
 const router = Router();
@@ -17,21 +18,22 @@ const router = Router();
  * /auth/register:
  *   post:
  *     tags: [Auth]
- *     summary: Registro de usuario
+ *     summary: Registro de usuario — elige un nombre de usuario y un email (que habrá que verificar después)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password, name]
+ *             required: [username, email, password, name]
  *             properties:
+ *               username: { type: string, minLength: 3, maxLength: 30 }
  *               email: { type: string, format: email }
  *               password: { type: string, minLength: 8 }
  *               name: { type: string }
  *     responses:
- *       201: { description: Usuario creado, retorna token + refreshToken }
- *       409: { description: El email ya existe }
+ *       201: { description: Usuario creado, retorna token + refreshToken (el login no exige el email verificado) }
+ *       409: { description: El email o el nombre de usuario ya existen }
  */
 router.post("/register", validate(registerSchema), authController.register);
 
@@ -40,16 +42,16 @@ router.post("/register", validate(registerSchema), authController.register);
  * /auth/login:
  *   post:
  *     tags: [Auth]
- *     summary: Login de usuario
+ *     summary: Login con nombre de usuario O email indistintamente
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password]
+ *             required: [identifier, password]
  *             properties:
- *               email: { type: string, format: email }
+ *               identifier: { type: string, description: "Username o email" }
  *               password: { type: string }
  *     responses:
  *       200: { description: Login correcto, retorna token + refreshToken }
@@ -80,22 +82,55 @@ router.post("/refresh", validate(refreshSchema), authController.refresh);
 
 /**
  * @openapi
+ * /auth/verify-email:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Confirma un email a partir del token del enlace de verificación — no requiere estar logueado
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token: { type: string }
+ *     responses:
+ *       200: { description: Email verificado, retorna el perfil actualizado }
+ *       400: { description: Token inválido o caducado }
+ */
+router.post("/verify-email", validate(verifyEmailSchema), authController.verifyEmail);
+
+/**
+ * @openapi
  * /auth/me:
  *   get:
  *     tags: [Auth]
  *     summary: Perfil del usuario autenticado
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200: { description: "{ id, email, name, timezone }" }
+ *       200: { description: "{ id, email, username, name, lastName, timezone, emailVerified, nextUsernameChangeAllowedAt }" }
  *   put:
  *     tags: [Auth]
- *     summary: Actualizar nombre y/o timezone (zona IANA, ej. 'Europe/Madrid')
+ *     summary: Actualizar nombre, apellido, username, email y/o timezone
  *     security: [{ bearerAuth: [] }]
  *     responses:
  *       200: { description: Perfil actualizado }
  */
 router.get("/me", authMiddleware, authController.getProfile);
 router.put("/me", authMiddleware, validate(updateProfileSchema), authController.updateProfile);
+
+/**
+ * @openapi
+ * /auth/resend-verification:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Reenvía el email de verificación (no-op si ya está verificado)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Reenviado (o no-op si ya estaba verificado) }
+ */
+router.post("/resend-verification", authMiddleware, authController.resendVerification);
 
 /**
  * @openapi

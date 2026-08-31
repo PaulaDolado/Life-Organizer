@@ -4,12 +4,14 @@ import {
   refreshSchema,
   updateProfileSchema,
   changePasswordSchema,
+  verifyEmailSchema,
 } from "../../../src/validators/authValidators";
 
 describe("authValidators", () => {
   describe("registerSchema", () => {
     it("acepta un registro válido", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "test@example.com",
         password: "Password123",
         name: "Test User",
@@ -17,8 +19,33 @@ describe("authValidators", () => {
       expect(error).toBeUndefined();
     });
 
+    it("rechaza si falta el username", () => {
+      const { error } = registerSchema.validate({
+        email: "test@example.com",
+        password: "Password123",
+        name: "Test User",
+      });
+      expect(error).toBeDefined();
+    });
+
+    it("rechaza un username con formato inválido (mayúsculas, espacios, demasiado corto)", () => {
+      expect(
+        registerSchema.validate({ username: "AB", email: "test@example.com", password: "Password123", name: "Test User" })
+          .error
+      ).toBeDefined();
+      expect(
+        registerSchema.validate({
+          username: "con espacios",
+          email: "test@example.com",
+          password: "Password123",
+          name: "Test User",
+        }).error
+      ).toBeDefined();
+    });
+
     it("rechaza un email inválido", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "no-es-un-email",
         password: "Password123",
         name: "Test User",
@@ -28,6 +55,7 @@ describe("authValidators", () => {
 
     it("rechaza un password menor a 8 caracteres", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "test@example.com",
         password: "short",
         name: "Test User",
@@ -37,6 +65,7 @@ describe("authValidators", () => {
 
     it("rechaza si falta el nombre", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "test@example.com",
         password: "Password123",
       });
@@ -45,6 +74,7 @@ describe("authValidators", () => {
 
     it("acepta un timezone IANA válido", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "test@example.com",
         password: "Password123",
         name: "Test User",
@@ -55,6 +85,7 @@ describe("authValidators", () => {
 
     it("rechaza un timezone que no es una zona IANA real", () => {
       const { error } = registerSchema.validate({
+        username: "test_user",
         email: "test@example.com",
         password: "Password123",
         name: "Test User",
@@ -65,13 +96,18 @@ describe("authValidators", () => {
   });
 
   describe("loginSchema", () => {
-    it("acepta credenciales válidas", () => {
-      const { error } = loginSchema.validate({ email: "test@example.com", password: "cualquiera" });
-      expect(error).toBeUndefined();
+    it("acepta un identifier (email o username) + password", () => {
+      expect(loginSchema.validate({ identifier: "test@example.com", password: "cualquiera" }).error).toBeUndefined();
+      expect(loginSchema.validate({ identifier: "test_user", password: "cualquiera" }).error).toBeUndefined();
     });
 
     it("rechaza si falta el password", () => {
-      const { error } = loginSchema.validate({ email: "test@example.com" });
+      const { error } = loginSchema.validate({ identifier: "test@example.com" });
+      expect(error).toBeDefined();
+    });
+
+    it("rechaza si falta identifier", () => {
+      const { error } = loginSchema.validate({ password: "cualquiera" });
       expect(error).toBeDefined();
     });
   });
@@ -111,10 +147,12 @@ describe("authValidators", () => {
       expect(error).toBeUndefined();
     });
 
-    // No existe un `username` aparte: el nombre de usuario ES el email de acceso, y ese sí se
-    // edita desde aquí (campo `email`, ver más abajo) — pero no bajo el nombre `username`.
-    it("rechaza un campo username (ya no existe, era un alias aparte que se quitó)", () => {
-      expect(updateProfileSchema.validate({ username: "paula.dolado" }).error).toBeDefined();
+    it("acepta un username con formato válido", () => {
+      expect(updateProfileSchema.validate({ username: "paula.dolado" }).error).toBeUndefined();
+    });
+
+    it("rechaza un username con mayúsculas o espacios", () => {
+      expect(updateProfileSchema.validate({ username: "Paula Dolado" }).error).toBeDefined();
     });
 
     it("acepta un email válido", () => {
@@ -144,6 +182,16 @@ describe("authValidators", () => {
     it("rechaza newPassword menor a 8 caracteres", () => {
       const { error } = changePasswordSchema.validate({ currentPassword: "loQueSea", newPassword: "corta" });
       expect(error).toBeDefined();
+    });
+  });
+
+  describe("verifyEmailSchema", () => {
+    it("acepta un token presente", () => {
+      expect(verifyEmailSchema.validate({ token: "abc123" }).error).toBeUndefined();
+    });
+
+    it("rechaza si falta el token", () => {
+      expect(verifyEmailSchema.validate({}).error).toBeDefined();
     });
   });
 });

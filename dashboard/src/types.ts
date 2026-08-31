@@ -5,14 +5,20 @@ export interface Pagination {
   pages: number;
 }
 
-// No hay `username` aparte: el nombre de usuario es el propio `email` con el que se inicia
-// sesión (ver ProfileDialog/AppShell).
+// `username` es un alias de login independiente del email — ambos sirven para iniciar sesión
+// (ver ProfileDialog/AppShell/LoginPage). El email requiere verificación (ver `emailVerified`),
+// pero el login no la exige: solo se muestra un aviso hasta que se confirme.
 export interface User {
   id: number;
   email: string;
+  username: string;
   name: string;
   lastName?: string | null;
   timezone?: string;
+  emailVerified: boolean;
+  // Fecha (ISO) a partir de la cual se puede volver a cambiar el username — null si nunca se
+  // cambió o si el cooldown de 15 días ya pasó. Ver ProfileDialog.
+  nextUsernameChangeAllowedAt?: string | null;
 }
 
 export interface AuthResponse {
