@@ -48,6 +48,23 @@ export interface Event {
   originalStartTime?: string;
   isException?: boolean;
   exceptionStatus?: "moved";
+  // "google" en los importados por la integración de solo lectura con Google Calendar (ver
+  // GoogleCalendarCard en el dashboard) — "tidely" (o ausente, en respuestas antiguas) en el
+  // resto. Editar/mover uno de estos desde Tidely no se refleja en Google, y la próxima
+  // sincronización lo sobrescribe con la versión de Google.
+  source?: "tidely" | "google";
+}
+
+export interface GoogleCalendarStatus {
+  connected: boolean;
+  email?: string;
+  lastSyncedAt?: string | null;
+}
+
+export interface GoogleCalendarSyncResult {
+  imported: number;
+  updated: number;
+  removed: number;
 }
 
 export interface AgendaResponse {
@@ -61,6 +78,14 @@ export interface AgendaResponse {
   timezone: string;
   events: Event[];
   pagination: Pagination;
+}
+
+// Vista anual (ver YearGrid en el dashboard): no trae los eventos completos, solo cuántos hay
+// cada día — de sobra para pintar el puntito en la cuadrícula de 12 mini-meses.
+export interface AgendaYearResponse {
+  year: string;
+  timezone: string;
+  counts: Record<string, number>;
 }
 
 export interface FreeBlock {
@@ -108,6 +133,10 @@ export interface Task {
   id: number;
   title: string;
   description: string | null;
+  // Foto embebida como data URL (ver TaskDetailDialog en el dashboard).
+  image: string | null;
+  // Recuadro grande sin nombre del diálogo de detalles — texto libre aparte de `description`.
+  notes: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   order: number;
@@ -297,6 +326,13 @@ export interface KanbanCard {
   // tarjeta no tiene ninguna. No es una URL a un archivo aparte: vive dentro del propio JSON de
   // CustomPage.content, así que "añadir/actualizar/eliminar" es solo sobrescribir este campo.
   image?: string | null;
+  // Resumen corto opcional (ver KanbanCardDialog) — mismo papel que Task.description en el
+  // Planificador: un vistazo rápido, distinto del recuadro grande de `notes`.
+  description?: string;
+  // Recuadro grande SIN nombre del diálogo de detalles de la tarjeta (ver KanbanCardDialog en el
+  // dashboard) — mismo campo/idea que Task.notes en el Planificador, pero aquí vive dentro del
+  // propio JSON de CustomPage.content, igual que `image`.
+  notes?: string | null;
 }
 
 export interface KanbanColumn {

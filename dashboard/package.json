@@ -1,7 +1,7 @@
 {
   "name": "life-organizer-dashboard",
   "version": "1.0.0",
-  "description": "Dashboard demo (React + TypeScript) para Life Organizer API",
+  "description": "Dashboard demo (React + TypeScript) para Tidely API",
   "private": true,
   "type": "module",
   "scripts": {

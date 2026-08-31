@@ -37,8 +37,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-4 font-sans">
       <form onSubmit={handleSubmit} className="card-soft flex w-full max-w-sm flex-col gap-4">
         <div className="mb-2 flex items-center justify-center gap-3">
-          <div className="size-8 rounded-full bg-primary" />
-          <h1 className="font-serif text-3xl">Life Organizer</h1>
+          <h1 className="font-serif text-3xl">Tidely</h1>
         </div>
         <p className="-mt-2 text-center text-sm text-muted-foreground">
           {mode === "login" ? "Inicia sesión para continuar" : "Crea tu cuenta"}

@@ -16,6 +16,7 @@ import linkPreviewRoutes from "./linkPreview.routes";
 import scheduleRoutes from "./schedule.routes";
 import customPagesRoutes from "./customPages.routes";
 import calendarLegendRoutes from "./calendarLegend.routes";
+import googleCalendarRoutes from "./googleCalendar.routes";
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use("/link-preview", linkPreviewRoutes);
 router.use("/schedule", scheduleRoutes);
 router.use("/custom-pages", customPagesRoutes);
 router.use("/calendar-legend", calendarLegendRoutes);
+router.use("/integrations/google", googleCalendarRoutes);
 
 export default router;

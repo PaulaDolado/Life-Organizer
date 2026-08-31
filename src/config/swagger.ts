@@ -5,7 +5,7 @@ const options: swaggerJsdoc.Options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Life Organizer API",
+      title: "Tidely API",
       version: "1.0.0",
       description:
         "API REST de organización personal: Agenda, Metas, Finanzas, Proyectos y Hobbies.",

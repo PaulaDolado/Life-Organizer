@@ -1,4 +1,4 @@
-// Life Organizer API — Prisma schema
+// Tidely API — Prisma schema
 // Ver: Life_Organizer_API_Especificacion.docx, sección 4
 
 generator client {
@@ -52,6 +52,7 @@ model User {
   customPages   CustomPage[]
   calendarLegendCategories CalendarLegendCategory[]
   calendarDayMarks         CalendarDayMark[]
+  googleCalendarConnection GoogleCalendarConnection?
 
   @@index([emailVerificationTokenHash])
 }
@@ -74,6 +75,15 @@ model Event {
   // Invitados: lista simple de nombres/emails sin flujo de invitación/aceptación (la app sigue
   // siendo mono-usuario) — solo para llevar constancia de quién viene al evento.
   guests           String[] @default([])
+  // Origen del evento: "tidely" (creado a mano, el caso normal) o "google" (importado por la
+  // integración de solo lectura con Google Calendar, ver googleCalendarService). `googleEventId`
+  // solo se rellena en el segundo caso — es el id que Google da a esa instancia concreta
+  // (con singleEvents:true cada ocurrencia de una serie recurrente ya llega expandida con su
+  // propio id, así que no hace falta replicar aquí su RRULE). El índice único (userId,
+  // googleEventId) evita reimportar el mismo evento dos veces en cada sincronización; Postgres
+  // permite múltiples NULL en un índice único, así que no afecta a los eventos "tidely" normales.
+  source           String   @default("tidely")
+  googleEventId    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -82,6 +92,7 @@ model Event {
 
   @@index([userId])
   @@index([userId, startTime])
+  @@unique([userId, googleEventId])
 }
 
 // Excepción a UNA ocurrencia concreta de una serie recurrente — mover o cancelar esa ocurrencia
@@ -279,6 +290,13 @@ model Task {
   projectId   Int? // vínculo opcional a un Project — ver comentario en Project.plannerTasks
   title       String
   description String?
+  // Imagen embebida como data URL (igual que RichTextEditor.insertImage y el kanban de páginas
+  // personalizadas) — @db.Text porque una foto en base64 pesa mucho más que el resto de campos.
+  image       String?   @db.Text
+  // Recuadro grande de texto libre del diálogo de detalles, SIN nombre/etiqueta en la interfaz a
+  // propósito (ver TaskDetailDialog en el dashboard): "todo lo demás" que no encaja en la
+  // descripción corta — apuntes, contexto, lo que sea. @db.Text por la misma razón que `image`.
+  notes       String?   @db.Text
   status      String    @default("todo") // "todo" | "in_progress" | "done"
   priority    String    @default("medium") // "low" | "medium" | "high"
   order       Float     @default(0)
@@ -506,4 +524,25 @@ model CalendarDayMark {
 
   @@unique([userId, date])
   @@index([categoryId])
+}
+
+// Conexión OAuth de un usuario con su Google Calendar (ver googleCalendarService) — de momento
+// solo importación de solo lectura del calendario "primary", nunca escribe en Google. Uno por
+// usuario. Los tokens se guardan tal cual (no se pueden hashear como una contraseña: hace falta
+// el valor real para llamar a la API de Google en cada sincronización) — igual que cualquier
+// integración OAuth de servidor a servidor.
+model GoogleCalendarConnection {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @unique
+  googleEmail  String
+  accessToken  String    @db.Text
+  refreshToken String    @db.Text
+  expiryDate   DateTime
+  // Null hasta la primera sincronización — se muestra en el dashboard para que el usuario sepa
+  // si los datos importados están al día.
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

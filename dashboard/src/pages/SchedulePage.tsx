@@ -173,27 +173,63 @@ export function SchedulePage() {
         </div>
       ) : (
         <div className="space-y-10">
-          {viewMode === "flechas" && schedules.length > 0 && (
-            <div className="flex items-center justify-center gap-4">
+          {/* Una sola fila: las flechas para cambiar de horario a la izquierda (solo en vista
+              Flechas) y "+ Nuevo horario" a la derecha — queda justo entre esas flechas y el
+              "Eliminar horario" de la cabecera de la tabla, que va inmediatamente debajo. */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {viewMode === "flechas" ? (
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
+                  disabled={activeIndex === 0}
+                  className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ‹
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Horario {activeIndex + 1} de {schedules.length}
+                </span>
+                <button
+                  onClick={() => setActiveIndex((i) => Math.min(schedules.length - 1, i + 1))}
+                  disabled={activeIndex === schedules.length - 1}
+                  className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ›
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            {showCreate ? (
+              <form onSubmit={createSchedule} className="flex gap-2 rounded-2xl border border-dashed border-border p-3">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder='Nombre, p.ej. "2n trimestre"'
+                  className="field-input flex-1 text-sm"
+                />
+                <button type="submit" className="btn-dark shrink-0 px-3 py-2 text-xs">
+                  Crear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="shrink-0 cursor-pointer px-2 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancelar
+                </button>
+              </form>
+            ) : (
               <button
-                onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
-                disabled={activeIndex === 0}
-                className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                onClick={() => setShowCreate(true)}
+                className="cursor-pointer whitespace-nowrap rounded-full border border-dashed border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
               >
-                ‹
+                + Nuevo horario
               </button>
-              <span className="text-xs text-muted-foreground">
-                Horario {activeIndex + 1} de {schedules.length}
-              </span>
-              <button
-                onClick={() => setActiveIndex((i) => Math.min(schedules.length - 1, i + 1))}
-                disabled={activeIndex === schedules.length - 1}
-                className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                ›
-              </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {(viewMode === "apilado" ? schedules : schedules.slice(activeIndex, activeIndex + 1)).map((schedule) => {
             const index = schedules.findIndex((s) => s.id === schedule.id);
@@ -210,35 +246,6 @@ export function SchedulePage() {
               />
             );
           })}
-
-          {showCreate ? (
-            <form onSubmit={createSchedule} className="flex max-w-sm gap-2 rounded-2xl border border-dashed border-border p-3">
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder='Nombre, p.ej. "2n trimestre"'
-                className="field-input flex-1 text-sm"
-              />
-              <button type="submit" className="btn-dark shrink-0 px-3 py-2 text-xs">
-                Crear
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="shrink-0 cursor-pointer px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                Cancelar
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="w-full max-w-sm cursor-pointer rounded-full border border-dashed border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
-            >
-              + Nuevo horario
-            </button>
-          )}
         </div>
       )}
 

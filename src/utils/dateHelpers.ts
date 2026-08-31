@@ -92,6 +92,35 @@ export function monthRange(dateStr: string, timezone: string): { start: Date; en
   };
 }
 
+/** Primer y último día de calendario (Y-M-D) del año que contiene `dateStr`. Aritmética pura de
+ * calendario en UTC, igual que `calendarMonthBounds` — el año de una fecha no depende de ninguna
+ * zona horaria real. */
+function calendarYearBounds(dateStr: string): { firstStr: string; lastStr: string } {
+  const year = new Date(`${dateStr}T00:00:00.000Z`).getUTCFullYear();
+  return { firstStr: `${year}-01-01`, lastStr: `${year}-12-31` };
+}
+
+/** Rango [1 enero 00:00:00.000, 31 diciembre 23:59:59.999] del año que contiene `dateStr`,
+ * como se entiende en `timezone`. La usa `agendaService.getYear` para la vista anual. */
+export function yearRange(dateStr: string, timezone: string): { start: Date; end: Date } {
+  const { firstStr, lastStr } = calendarYearBounds(dateStr);
+  return {
+    start: zonedInstant(firstStr, "00:00:00.000", timezone),
+    end: zonedInstant(lastStr, "23:59:59.999", timezone),
+  };
+}
+
+/** Inverso de `zonedInstant`: a qué fecha de calendario (Y-M-D) corresponde un instante UTC
+ * "de pared" en `timezone`. La usa `agendaService.getYear` para agrupar cada ocurrencia (evento
+ * real o virtual expandido) bajo el día real del usuario, no el día UTC del propio instante. */
+export function zonedDateKey(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(
+    date
+  );
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 /**
  * Ventana horaria de un día concreto en `timezone` (por defecto 08:00–22:00 "de pared") — la
  * usa `agendaService.getFreeTime` como límites del día para calcular huecos: fuera de esta

@@ -12,7 +12,7 @@ import { ValidationError } from "../utils/errorHandler";
 
 const FETCH_TIMEOUT_MS = 6000;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2MB de HTML es de sobra para leer <head>
-const USER_AGENT = "Mozilla/5.0 (compatible; LifeOrganizerBot/1.0; +link-preview)";
+const USER_AGENT = "Mozilla/5.0 (compatible; TidelyBot/1.0; +link-preview)";
 
 export interface LinkPreview {
   url: string;

@@ -45,7 +45,7 @@ export function VerifyEmailPage() {
       <div className="card-soft flex w-full max-w-sm flex-col items-center gap-4 text-center">
         <div className="mb-1 flex items-center justify-center gap-3">
           <div className="size-8 rounded-full bg-primary" />
-          <h1 className="font-serif text-2xl">Life Organizer</h1>
+          <h1 className="font-serif text-2xl">Tidely</h1>
         </div>
 
         {status === "loading" && <p className="text-sm text-muted-foreground">Verificando tu email…</p>}

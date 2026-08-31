@@ -1,4 +1,4 @@
-# Life Organizer API
+# Tidely API
 
 API REST de organización personal integral: **Agenda · Metas · Finanzas · Proyectos · Hobbies**, con notificaciones automáticas y eventos recurrentes de verdad.
 
@@ -44,6 +44,21 @@ npm run dev
 
 - API: http://localhost:3000 · Health check: `/health` · Swagger: `/api-docs`
 
+### Integración con Google Calendar (opcional)
+
+Sin esto, la app funciona igual — esa integración simplemente responde "no configurada" hasta que la actives. Pasos en [Google Cloud Console](https://console.cloud.google.com/):
+
+1. Crea un proyecto (o usa uno existente) y, en "APIs & Services" → "Library", habilita la **Google Calendar API**.
+2. En "APIs & Services" → "OAuth consent screen", configura una pantalla de consentimiento básica (tipo "External" sirve para uso personal; añade tu propio email como usuario de prueba si el proyecto queda en modo "Testing").
+3. En "APIs & Services" → "Credentials" → "Create Credentials" → "OAuth client ID", tipo **Web application**. En "Authorized redirect URIs" añade exactamente la misma URL que pongas en `GOOGLE_REDIRECT_URI` (por defecto `http://localhost:3000/integrations/google/callback`).
+4. Copia el "Client ID" y "Client secret" generados a tu `.env`:
+   ```bash
+   GOOGLE_CLIENT_ID="tu-client-id.apps.googleusercontent.com"
+   GOOGLE_CLIENT_SECRET="tu-client-secret"
+   GOOGLE_REDIRECT_URI="http://localhost:3000/integrations/google/callback"
+   ```
+5. Reinicia el servidor. En el dashboard, botón "Conectar Google" en la cabecera de Agenda.
+
 ## Tests
 
 ```bash
@@ -64,6 +79,7 @@ Detalle completo (qué cubre cada carpeta, bugs reales encontrados por los tests
 - [x] **Post-Sprint-5** — Notificaciones (recordatorios + alertas), eventos recurrentes reales, paginación en todos los listados, timezone del usuario aplicada en Agenda, expiración/auto-renovación de metas, documentación separada en archivos dedicados
 - [x] **Rediseño del dashboard** — nueva identidad visual (paleta oklch, Tailwind v4, Outfit + Instrument Serif) adaptada de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23), con las 5 páginas (Agenda, Metas, Finanzas, Proyectos, Hobbies) más notificaciones — ver [dashboard/README.md](dashboard/README.md#origen-del-diseño-y-qué-se-adaptó) para qué se adoptó tal cual y qué se adaptó a nuestra API
 - [x] **Sync offline + app móvil (Fase 1)** — `/sync/pull` y `/sync/push` (tombstones para borrados, last-write-wins para conflictos) cubriendo Eventos, Tareas/Subtareas, Notas y Hábitos; app Expo/React Native nueva en [mobile/](mobile/README.md) con SQLite local y una pantalla "Hoy" que funciona sin conexión — ver [API.md](API.md#sincronización-sync) para el contrato y qué módulos quedan fuera de esta fase
+- [x] **Integración con Google Calendar (solo importación)** — conecta tu cuenta con OAuth2, importa eventos del calendario `primary` (± 30/180 días) y los mantiene al día con un cron cada 30 min además de un botón de "Sincronizar ahora" — ver [API.md](API.md#integraciones--google-calendar) y la sección de Setup de abajo para configurar las credenciales
 
 ## Nota de seguridad conocida (dependencias)
 

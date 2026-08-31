@@ -9,10 +9,13 @@ import { QuickNotesCard } from "../components/QuickNotesCard";
 import { RecentEntriesCard } from "../components/RecentEntriesCard";
 import {
   AgendaResponse,
+  AgendaYearResponse,
   Event,
   EventType,
   FreeTimeResponse,
   Goal,
+  GoogleCalendarStatus,
+  GoogleCalendarSyncResult,
   Habit,
   IcsImportResult,
   Note,
@@ -60,7 +63,13 @@ const TYPE_LABELS: Record<string, string> = {
   free: "Libre",
 };
 
-type ViewMode = "week" | "month";
+type ViewMode = "week" | "month" | "year" | "agenda";
+const VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: "week", label: "Semana" },
+  { value: "month", label: "Mes" },
+  { value: "year", label: "Año" },
+  { value: "agenda", label: "Agenda" },
+];
 
 function toKey(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -78,6 +87,14 @@ function dayKeyOf(event: Event): string {
 function addDays(key: string, delta: number): string {
   const d = new Date(`${key}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + delta);
+  return toKey(d);
+}
+
+// Igual razonamiento que addDays: aritmética de calendario pura en UTC — desplazar el AÑO, no
+// sumar 365 días (que se desalinearía en años bisiestos).
+function addYears(key: string, delta: number): string {
+  const d = new Date(`${key}T00:00:00.000Z`);
+  d.setUTCFullYear(d.getUTCFullYear() + delta);
   return toKey(d);
 }
 
@@ -134,8 +151,23 @@ export function AgendaPage({
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [showFreeTime, setShowFreeTime] = useState(false);
 
+  // "Agenda" (lista) usa los mismos eventos que "Mes" — solo cambia cómo se pintan (lista
+  // cronológica agrupada por día en vez de cuadrícula). "Año" tiene su propio endpoint ligero
+  // (ver AgendaYearResponse) porque no necesita el evento completo, solo un recuento por día.
   const { data, loading, error, reload } = useFetch(
-    () => (viewMode === "month" ? api.get<AgendaResponse>(`/agenda/month/${selected}`) : api.get<AgendaResponse>(`/agenda/week/${selected}`)),
+    () =>
+      viewMode === "month" || viewMode === "agenda"
+        ? api.get<AgendaResponse>(`/agenda/month/${selected}`)
+        : viewMode === "week"
+          ? api.get<AgendaResponse>(`/agenda/week/${selected}`)
+          : Promise.resolve(null as unknown as AgendaResponse),
+    [selected, viewMode]
+  );
+
+  // Se resuelve a `null` sin llamar a la API salvo en vista "Año" — evita malgastar una petición
+  // en cada cambio de semana/mes/agenda solo porque las deps cambiaron.
+  const { data: yearData, loading: yearLoading } = useFetch(
+    () => (viewMode === "year" ? api.get<AgendaYearResponse>(`/agenda/year/${selected}`) : Promise.resolve(null)),
     [selected, viewMode]
   );
 
@@ -204,6 +236,7 @@ export function AgendaPage({
       if (week.length === 0) return "";
       return `Semana del ${fmt(week[0])} – ${fmt(week[6])}`;
     }
+    if (viewMode === "year") return selected.slice(0, 4);
     return new Date(`${selected.slice(0, 7)}-01T00:00:00.000Z`).toLocaleDateString("es-ES", {
       month: "long",
       year: "numeric",
@@ -238,26 +271,21 @@ export function AgendaPage({
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center overflow-hidden rounded-full border border-border">
-              <button
-                onClick={() => setViewMode("week")}
-                className={`cursor-pointer px-3 py-2 text-xs font-medium transition-colors ${
-                  viewMode === "week" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                Semana
-              </button>
-              <button
-                onClick={() => setViewMode("month")}
-                className={`cursor-pointer border-l border-border px-3 py-2 text-xs font-medium transition-colors ${
-                  viewMode === "month" ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                Mes
-              </button>
+              {VIEW_MODES.map(({ value, label }, index) => (
+                <button
+                  key={value}
+                  onClick={() => setViewMode(value)}
+                  className={`cursor-pointer px-3 py-2 text-xs font-medium transition-colors ${index > 0 ? "border-l border-border" : ""} ${
+                    viewMode === value ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <div className="flex items-center overflow-hidden rounded-full border border-border">
               <button
-                onClick={() => setSelected((s) => addDays(s, viewMode === "month" ? -28 : -7))}
+                onClick={() => setSelected((s) => (viewMode === "year" ? addYears(s, -1) : addDays(s, viewMode === "week" ? -7 : -28)))}
                 className="cursor-pointer px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
                 aria-label="Anterior"
               >
@@ -270,7 +298,7 @@ export function AgendaPage({
                 Hoy
               </button>
               <button
-                onClick={() => setSelected((s) => addDays(s, viewMode === "month" ? 28 : 7))}
+                onClick={() => setSelected((s) => (viewMode === "year" ? addYears(s, 1) : addDays(s, viewMode === "week" ? 7 : 28)))}
                 className="cursor-pointer px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
                 aria-label="Siguiente"
               >
@@ -281,6 +309,7 @@ export function AgendaPage({
               {showFreeTime ? "Ocultar tiempo libre" : "⏱ Tiempo libre"}
             </button>
             <IcsMenu onImported={reload} />
+            <GoogleCalendarMenu onSynced={reload} />
             <button onClick={() => setOpen((v) => !v)} className="btn-dark">
               {open ? "Cerrar" : "+ Nuevo evento"}
             </button>
@@ -304,12 +333,28 @@ export function AgendaPage({
       {showFreeTime && <FreeTimePanel date={selected} onScheduled={reload} />}
 
       <section className="mb-8">
-        {loading ? (
+        {viewMode === "year" ? (
+          yearLoading ? (
+            <Loading label="Cargando el año..." />
+          ) : (
+            <YearGrid
+              year={Number(selected.slice(0, 4))}
+              counts={yearData?.counts ?? {}}
+              today={today}
+              onPickDay={(key) => {
+                setSelected(key);
+                setViewMode("week");
+              }}
+            />
+          )
+        ) : loading ? (
           <Loading label="Cargando agenda..." />
         ) : viewMode === "week" ? (
           week.length > 0 && (
             <WeekTimeGrid week={week} events={data?.events ?? []} today={today} onSelect={setEditingEvent} onMoveToDay={moveEventToDay} />
           )
+        ) : viewMode === "agenda" ? (
+          <AgendaListView events={data?.events ?? []} today={today} onSelect={setEditingEvent} />
         ) : (
           month.length > 0 && (
             <MonthGrid
@@ -375,6 +420,166 @@ export function AgendaPage({
   );
 }
 
+const MONTH_NAMES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+const MINI_DAY_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
+
+// Vista anual: 12 mini-meses en cuadrícula, cada uno con su propio recuento de días (ver
+// AgendaYearResponse) — solo un puntito por día con eventos, sin detalle (para eso está la
+// semana/mes/lista). Clicar un día salta a la vista semanal de esa fecha, igual que MonthGrid.
+function YearGrid({
+  year,
+  counts,
+  today,
+  onPickDay,
+}: {
+  year: number;
+  counts: Record<string, number>;
+  today: string;
+  onPickDay: (key: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 12 }, (_, month) => (
+        <MiniMonth key={month} year={year} month={month} counts={counts} today={today} onPickDay={onPickDay} />
+      ))}
+    </div>
+  );
+}
+
+function MiniMonth({
+  year,
+  month,
+  counts,
+  today,
+  onPickDay,
+}: {
+  year: number;
+  month: number; // 0-11
+  counts: Record<string, number>;
+  today: string;
+  onPickDay: (key: string) => void;
+}) {
+  // Misma aritmética de cuadrícula (relleno hasta semana completa, lunes primero) que el `month`
+  // useMemo de AgendaPage, pero en Date.UTC directo en vez de pasar por claves de texto — aquí
+  // no hace falta reutilizar addDays/toKey porque no depende de `selected` ni se recalcula fuera
+  // de este propio componente.
+  const cells = useMemo(() => {
+    const first = new Date(Date.UTC(year, month, 1));
+    const startIsoWeekday = first.getUTCDay() === 0 ? 7 : first.getUTCDay();
+    const gridStart = new Date(Date.UTC(year, month, 1 - (startIsoWeekday - 1)));
+
+    const last = new Date(Date.UTC(year, month + 1, 0));
+    const endIsoWeekday = last.getUTCDay() === 0 ? 7 : last.getUTCDay();
+    const gridEnd = new Date(Date.UTC(year, month, last.getUTCDate() + (7 - endIsoWeekday)));
+
+    const days: Date[] = [];
+    for (const cursor = new Date(gridStart); cursor.getTime() <= gridEnd.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+      days.push(new Date(cursor));
+    }
+    return days;
+  }, [year, month]);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3">
+      <p className="mb-2 text-center text-xs font-medium">{MONTH_NAMES[month]}</p>
+      <div className="grid grid-cols-7 gap-y-1">
+        {MINI_DAY_LABELS.map((label, i) => (
+          <span key={`${label}-${i}`} className="text-center text-[9px] text-muted-foreground">
+            {label}
+          </span>
+        ))}
+        {cells.map((d) => {
+          const key = toKey(d);
+          const inMonth = d.getUTCMonth() === month;
+          const isToday = key === today;
+          const hasEvents = inMonth && (counts[key] ?? 0) > 0;
+          return (
+            <button
+              key={key}
+              onClick={() => onPickDay(key)}
+              disabled={!inMonth}
+              className={`relative flex aspect-square cursor-pointer items-center justify-center rounded-full text-[10px] transition-colors disabled:cursor-default ${
+                !inMonth ? "text-transparent" : isToday ? "bg-foreground font-medium text-background" : "text-foreground hover:bg-muted"
+              }`}
+            >
+              {inMonth ? d.getUTCDate() : "·"}
+              {hasEvents && <span className={`absolute bottom-0.5 size-1 rounded-full ${isToday ? "bg-background" : "bg-primary"}`} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Vista "Agenda": lista cronológica agrupada por día (mismos eventos que "Mes", solo cambia la
+// presentación) — sin drag-and-drop, que no tiene columnas de día donde soltar.
+function AgendaListView({ events, today, onSelect }: { events: Event[]; today: string; onSelect: (event: Event) => void }) {
+  const grouped = useMemo(() => {
+    const byDay = new Map<string, Event[]>();
+    for (const event of events) {
+      const key = dayKeyOf(event);
+      const list = byDay.get(key) ?? [];
+      list.push(event);
+      byDay.set(key, list);
+    }
+    return Array.from(byDay.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, dayEvents]) => [key, [...dayEvents].sort((a, b) => a.startTime.localeCompare(b.startTime))] as const);
+  }, [events]);
+
+  if (grouped.length === 0) {
+    return (
+      <p className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+        No hay eventos que mostrar en este periodo.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {grouped.map(([dayKey, dayEvents]) => (
+        <div key={dayKey} className={`rounded-2xl border p-4 ${dayKey === today ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>
+          <p className={`mb-3 text-xs font-medium uppercase tracking-wide ${dayKey === today ? "text-primary" : "text-muted-foreground"}`}>
+            {new Date(`${dayKey}T00:00:00.000Z`).toLocaleDateString("es-ES", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              timeZone: "UTC",
+            })}
+            {dayKey === today && " · Hoy"}
+          </p>
+          <div className="space-y-1.5">
+            {dayEvents.map((event) => (
+              <EventCard
+                key={`${event.id}-${event.startTime}`}
+                event={event}
+                onSelect={() => onSelect(event)}
+                onDragStart={() => {}}
+                onDragEnd={() => {}}
+                draggedId={null}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EventCard({
   event,
   compact,
@@ -395,10 +600,11 @@ function EventCard({
   // tarjeta lleva el color de esa categoría (antes solo la etiqueta lo llevaba), así que sigue
   // siendo distinguible de un vistazo sin ocupar espacio con el nombre. El nombre no desaparece
   // del todo: queda como `title` (tooltip nativo al pasar el ratón) para no perder accesibilidad.
+  const title = event.source === "google" ? `Importado de Google Calendar` : (TYPE_LABELS[event.type] ?? event.type);
   return (
     <button
       draggable
-      title={TYPE_LABELS[event.type] ?? event.type}
+      title={title}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onSelect}
@@ -407,6 +613,7 @@ function EventCard({
       } ${draggedId === dragKey ? "opacity-40" : ""} ${compact ? "px-2 py-1" : ""}`}
     >
       <p className={`truncate font-medium ${compact ? "text-[11px]" : "text-xs"}`}>
+        {event.source === "google" && "📅 "}
         {event.title}
         {event.isRecurring && " ↻"}
         {event.isException && " ✎"}
@@ -755,6 +962,147 @@ function IcsMenu({ onImported }: { onImported: () => void }) {
           <button onClick={() => setImportSummary(null)} className="mt-2 cursor-pointer text-primary hover:underline">
             Cerrar
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Integración de solo lectura con Google Calendar (ver googleCalendarService en el backend):
+ * conectar es una navegación completa del navegador a la URL de consentimiento de Google (no un
+ * fetch de la SPA), y Google redirige de vuelta al dashboard con `?google=connected|error` en la
+ * URL (ver App.tsx: aquí no hay router real) — este componente consume ese aviso una sola vez y
+ * lo limpia de la URL. Aparte de la sincronización manual, el backend también sincroniza solo
+ * cada 30 min (ver googleCalendarSyncScheduler).
+ */
+function GoogleCalendarMenu({ onSynced }: { onSynced: () => void }) {
+  const { data: status, loading, reload } = useFetch(() => api.get<GoogleCalendarStatus>("/integrations/google/status"), []);
+  const [busy, setBusy] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [redirectNotice, setRedirectNotice] = useState<"connected" | "error" | null>(null);
+  const [syncSummary, setSyncSummary] = useState<GoogleCalendarSyncResult | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const google = params.get("google");
+    if (google !== "connected" && google !== "error") return;
+    setRedirectNotice(google);
+    params.delete("google");
+    const search = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (search ? `?${search}` : ""));
+    if (google === "connected") reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const { url } = await api.get<{ url: string }>("/integrations/google/connect");
+      window.location.href = url;
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo iniciar la conexión con Google");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sync = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await api.post<GoogleCalendarSyncResult>("/integrations/google/sync");
+      setSyncSummary(result);
+      reload();
+      onSynced();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo sincronizar");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.delete("/integrations/google/disconnect");
+      setMenuOpen(false);
+      setSyncSummary(null);
+      reload();
+      onSynced();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "No se pudo desconectar");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return null;
+  const connected = status?.connected ?? false;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => (connected ? setMenuOpen((v) => !v) : connect())}
+        disabled={busy}
+        title={connected ? `Conectado como ${status?.email}` : "Conectar Google Calendar"}
+        className={`cursor-pointer rounded-full border px-3 py-2 text-xs transition-colors disabled:opacity-50 ${
+          connected ? "border-primary/30 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+        }`}
+      >
+        📅 {connected ? "Google Calendar" : "Conectar Google"}
+      </button>
+
+      {redirectNotice && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-border bg-card p-3 text-xs shadow-[var(--shadow-soft)]">
+          <p className={redirectNotice === "connected" ? "text-primary" : "text-destructive"}>
+            {redirectNotice === "connected" ? "Google Calendar conectado" : "No se pudo conectar con Google Calendar"}
+          </p>
+          <button onClick={() => setRedirectNotice(null)} className="mt-2 cursor-pointer text-muted-foreground hover:underline">
+            Cerrar
+          </button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-destructive/30 bg-card p-3 text-xs shadow-[var(--shadow-soft)]">
+          <p className="text-destructive">{actionError}</p>
+          <button onClick={() => setActionError(null)} className="mt-2 cursor-pointer text-muted-foreground hover:underline">
+            Cerrar
+          </button>
+        </div>
+      )}
+
+      {menuOpen && connected && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-72 rounded-2xl border border-border bg-card p-3 text-xs shadow-[var(--shadow-soft)]">
+          <p className="mb-1 font-medium">Conectado como {status?.email}</p>
+          <p className="mb-3 text-muted-foreground">
+            {status?.lastSyncedAt ? `Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString("es-ES")}` : "Todavía no se ha sincronizado"}
+          </p>
+          {syncSummary && (
+            <p className="mb-3 text-muted-foreground">
+              {syncSummary.imported} nuevo(s) · {syncSummary.updated} actualizado(s) · {syncSummary.removed} eliminado(s)
+            </p>
+          )}
+          <div className="flex gap-2">
+            <button onClick={sync} disabled={busy} className="btn-dark flex-1 disabled:opacity-50">
+              Sincronizar ahora
+            </button>
+            <button
+              onClick={disconnect}
+              disabled={busy}
+              className="cursor-pointer rounded-full border border-border px-3 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50"
+            >
+              Desconectar
+            </button>
+          </div>
+          <p className="mt-3 text-[10px] text-muted-foreground">
+            Se sincroniza sola cada 30 min. Solo importa: editar aquí un evento de Google no cambia nada en tu cuenta, y la próxima
+            sincronización lo sobrescribe con la versión de Google.
+          </p>
         </div>
       )}
     </div>

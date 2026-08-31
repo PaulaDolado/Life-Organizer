@@ -8,6 +8,8 @@ const DEFAULT_PRIORITY = "medium";
 interface TaskInputFields {
   title?: string;
   description?: string | null;
+  image?: string | null;
+  notes?: string | null;
   status?: string;
   priority?: string;
   order?: number;
@@ -70,6 +72,8 @@ export async function createTask(userId: number, input: CreateTaskInput) {
       userId,
       title: input.title,
       description: input.description ?? null,
+      image: input.image ?? null,
+      notes: input.notes ?? null,
       status,
       priority: input.priority ?? DEFAULT_PRIORITY,
       order,
@@ -101,6 +105,8 @@ export async function updateTask(userId: number, taskId: number, input: UpdateTa
     data: {
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.image !== undefined ? { image: input.image || null } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.priority !== undefined ? { priority: input.priority } : {}),
       ...(input.order !== undefined ? { order: input.order } : {}),

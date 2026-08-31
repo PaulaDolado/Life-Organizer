@@ -78,7 +78,7 @@ export interface IcsEventInput {
  * sustituye a esa ocurrencia concreta de la serie, no que es un evento nuevo suelto.
  */
 export function buildIcs(events: IcsEventInput[]): string {
-  const lines: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Life Organizer//Agenda//ES", "CALSCALE:GREGORIAN"];
+  const lines: string[] = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Tidely//Agenda//ES", "CALSCALE:GREGORIAN"];
   const stamp = formatIcsDate(new Date());
 
   for (const event of events) {

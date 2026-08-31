@@ -31,9 +31,15 @@ const PRIORITY_STYLES: Record<TaskPriority, string> = {
   high: "bg-destructive/15 text-destructive",
 };
 
+// Igual límite y mecánica que RichTextEditor.insertImage y el kanban de páginas personalizadas:
+// se embebe como data URL, no hay subida a un storage aparte.
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB
+
 interface TaskFields {
   title?: string;
   description?: string | null;
+  image?: string | null;
+  notes?: string | null;
   dueDate?: string | null;
   tags?: string[];
   estimatedMinutes?: number | null;
@@ -64,7 +70,7 @@ export function PlanificadorPage({
   onFocusHandled,
 }: {
   // Llegada desde un resultado de la búsqueda global (ver AppShell.GlobalSearch): la tarjeta
-  // de esta tarea se abre expandida y se desplaza a la vista al montar.
+  // de esta tarea abre directamente el diálogo de detalles y se desplaza a la vista al montar.
   focusTaskId?: number;
   onFocusHandled?: () => void;
 } = {}) {
@@ -75,8 +81,8 @@ export function PlanificadorPage({
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   // Una vez la tarea buscada está en los datos cargados, ya se le ha pasado `autoFocus` a su
-  // TaskCard (que captura el desplegado/scroll en su propio montaje) — avisamos al padre para
-  // que limpie el foco y no se repita en cada recarga del tablero.
+  // TaskCard (que abre su diálogo de detalles y captura el desplazado en su propio montaje) —
+  // avisamos al padre para que limpie el foco y no se repita en cada recarga del tablero.
   useEffect(() => {
     if (focusTaskId && onFocusHandled && tasks.some((t) => t.id === focusTaskId)) {
       onFocusHandled();
@@ -120,7 +126,8 @@ export function PlanificadorPage({
     reload();
   };
 
-  // Editar cualquier campo de la tarea (título/descripción al clicar, o los del panel de detalles).
+  // Editar cualquier campo de la tarea (título/descripción/imagen/notas al clicar, o los del
+  // diálogo de detalles).
   const updateTask = async (id: number, fields: TaskFields) => {
     await api.put(`/planner/tasks/${id}`, fields);
     reload();
@@ -156,8 +163,8 @@ export function PlanificadorPage({
 
       {/* `loading && !data`, no solo `loading`: cada acción (subtarea, fecha límite, tiempo...)
           recarga el tablero, y si se sustituyera todo por el spinner en cada recarga, las
-          tarjetas se desmontarían y perderían su estado local (p. ej. el panel de "Detalles"
-          expandido se cerraría solo después de cada cambio). Solo se muestra en la carga inicial. */}
+          tarjetas se desmontarían y el diálogo de detalles abierto se cerraría solo después de
+          cada cambio. Solo se muestra en la carga inicial. */}
       {loading && !data ? (
         <Loading label="Cargando tablero..." />
       ) : (
@@ -344,6 +351,10 @@ function KanbanColumn({
   );
 }
 
+// La tarjeta del tablero es ahora solo una VISTA PREVIA (título, descripción corta, imagen,
+// insignias) — clicar en cualquier parte que no sea una acción concreta (prioridad, eliminar)
+// abre TaskDetailDialog, donde vive toda la edición de verdad (antes era un panel "Detalles" que
+// se desplegaba dentro de la propia tarjeta).
 function TaskCard({
   task,
   projects,
@@ -377,14 +388,7 @@ function TaskCard({
   onToggleSubtask: (subtask: Subtask) => void;
   onRemoveSubtask: (subtaskId: number) => void;
 }) {
-  const [editingField, setEditingField] = useState<"title" | "description" | null>(null);
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description ?? "");
-  // Si llega desde la búsqueda global, arranca ya expandida.
-  const [expanded, setExpanded] = useState(autoFocus ?? false);
-  const [newSubtask, setNewSubtask] = useState("");
-  const [newTag, setNewTag] = useState("");
-  const [minutesToLog, setMinutesToLog] = useState("");
+  const [detailOpen, setDetailOpen] = useState(autoFocus ?? false);
   const [justFocused, setJustFocused] = useState(autoFocus ?? false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -399,8 +403,179 @@ function TaskCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const project = projects.find((p) => p.id === task.projectId) ?? null;
+  const subtasks = task.subtasks ?? [];
+  const doneSubtasks = subtasks.filter((s) => s.completed).length;
+  const badge = dueBadge(task);
+
+  return (
+    <>
+      <div
+        ref={cardRef}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onClick={() => setDetailOpen(true)}
+        title="Haz clic para ver los detalles"
+        className={`group cursor-grab rounded-xl border border-border bg-background p-3 text-left transition-all active:cursor-grabbing ${
+          isDragged ? "opacity-40" : ""
+        } ${justFocused ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+      >
+        {task.image && <img src={task.image} alt="" className="mb-2 max-h-32 w-full rounded-lg object-cover" />}
+
+        <div className="flex items-start justify-between gap-2">
+          <span className={`min-w-0 flex-1 text-sm ${task.status === "done" ? "text-muted-foreground line-through" : ""}`}>
+            {task.title}
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="shrink-0 cursor-pointer text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+            aria-label="Eliminar tarea"
+          >
+            ✕
+          </button>
+        </div>
+
+        {task.description && <p className="mt-1.5 truncate text-xs text-muted-foreground">{task.description}</p>}
+
+        {/* Insignias compactas */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCyclePriority();
+            }}
+            className={`cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-80 ${PRIORITY_STYLES[task.priority]}`}
+          >
+            {PRIORITY_LABELS[task.priority]}
+          </button>
+          {badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>📅 {badge.label}</span>}
+          {project && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">📁 {project.title}</span>}
+          {subtasks.length > 0 && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              ☑ {doneSubtasks}/{subtasks.length}
+            </span>
+          )}
+          {(task.estimatedMinutes || task.actualMinutes > 0) && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              ⏱ {task.actualMinutes}
+              {task.estimatedMinutes ? `/${task.estimatedMinutes}` : ""} min
+            </span>
+          )}
+          {task.notes && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">📝</span>}
+          {task.tags.map((tag) => (
+            <span key={tag} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+              #{tag}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {detailOpen && (
+        <TaskDetailDialog
+          task={task}
+          projects={projects}
+          onClose={() => setDetailOpen(false)}
+          onUpdate={onUpdate}
+          onDelete={() => {
+            onDelete();
+            setDetailOpen(false);
+          }}
+          onLogTime={onLogTime}
+          onAddSubtask={onAddSubtask}
+          onToggleSubtask={onToggleSubtask}
+          onRemoveSubtask={onRemoveSubtask}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Diálogo de detalles de una tarea — se abre al clicar la tarjeta. Reúne todo lo que antes vivía
+ * en el panel "Detalles" desplegable de la tarjeta (subtareas, fecha límite, proyecto, etiquetas,
+ * tiempo), más lo nuevo: imagen y un recuadro grande DE TEXTO LIBRE SIN NOMBRE ni etiqueta —a
+ * propósito, para que sea justo "todo lo que el usuario quiera apuntar" aparte de la descripción
+ * corta, sin que un título lo condicione a un tipo de contenido concreto.
+ */
+function TaskDetailDialog({
+  task,
+  projects,
+  onClose,
+  onUpdate,
+  onDelete,
+  onLogTime,
+  onAddSubtask,
+  onToggleSubtask,
+  onRemoveSubtask,
+}: {
+  task: Task;
+  projects: Project[];
+  onClose: () => void;
+  onUpdate: (fields: TaskFields) => void;
+  onDelete: () => void;
+  onLogTime: (minutes: number) => void;
+  onAddSubtask: (title: string) => void;
+  onToggleSubtask: (subtask: Subtask) => void;
+  onRemoveSubtask: (subtaskId: number) => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description ?? "");
+  const [notes, setNotes] = useState(task.notes ?? "");
+  const [newSubtask, setNewSubtask] = useState("");
+  const [newTag, setNewTag] = useState("");
+  const [minutesToLog, setMinutesToLog] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // El textarea de notas es redimensionable en ambas direcciones (ver className más abajo), tanto
+  // para agrandarlo como para encogerlo. En vez de dejar que crezca solapándose con la columna
+  // derecha (fecha, proyecto, etiquetas...) o que el diálogo se quede con un hueco de sobra al
+  // encogerlo, el propio diálogo sigue al textarea en ambos sentidos — la columna derecha
+  // mantiene siempre su ancho de siempre, solo cambia la izquierda (y el diálogo entero con ella).
+  const modalRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const naturalSizeRef = useRef<{ modalWidth: number; leftWidth: number } | null>(null);
+  const [customSize, setCustomSize] = useState<{ modalWidth: number; leftWidth: number } | null>(null);
+
+  useEffect(() => {
+    const notesEl = notesRef.current;
+    if (!notesEl) return;
+    const observer = new ResizeObserver(() => {
+      // Solo tiene sentido en dos columnas (desde `md`) — en móvil todo va apilado a lo ancho
+      // de la pantalla y no hay nada con lo que "chocar".
+      if (!window.matchMedia("(min-width: 768px)").matches || !modalRef.current) return;
+      // La primera medida (antes de que el usuario toque el tirador) es la referencia "de
+      // fábrica" con la que comparar cuánto se ha movido, en cualquiera de los dos sentidos.
+      if (!naturalSizeRef.current) {
+        naturalSizeRef.current = { modalWidth: modalRef.current.getBoundingClientRect().width, leftWidth: notesEl.getBoundingClientRect().width };
+        return;
+      }
+      const { modalWidth, leftWidth } = naturalSizeRef.current;
+      const delta = notesEl.getBoundingClientRect().width - leftWidth;
+      if (Math.abs(delta) <= 2) {
+        setCustomSize(null);
+        return;
+      }
+      // Al agrandar, tope en el 95% del ancho de la ventana; al encoger, el propio `min-w-*`
+      // del textarea ya pone el límite (el navegador no deja arrastrar más allá), así que no
+      // hace falta otro tope aquí.
+      const maxModalWidth = window.innerWidth * 0.95;
+      const clampedDelta = delta > 0 ? Math.min(delta, Math.max(maxModalWidth - modalWidth, 0)) : delta;
+      setCustomSize({ modalWidth: modalWidth + clampedDelta, leftWidth: leftWidth + clampedDelta });
+    });
+    observer.observe(notesEl);
+    return () => observer.disconnect();
+  }, []);
+
+  const subtasks = task.subtasks ?? [];
+
   const saveTitle = () => {
-    setEditingField(null);
     const trimmed = title.trim();
     if (!trimmed || trimmed === task.title) {
       setTitle(task.title);
@@ -410,296 +585,312 @@ function TaskCard({
   };
 
   const saveDescription = () => {
-    setEditingField(null);
     const trimmed = description.trim();
     if (trimmed === (task.description ?? "")) return;
     onUpdate({ description: trimmed || null });
   };
 
-  const project = projects.find((p) => p.id === task.projectId) ?? null;
-  const subtasks = task.subtasks ?? [];
-  const doneSubtasks = subtasks.filter((s) => s.completed).length;
-  const badge = dueBadge(task);
+  const saveNotes = () => {
+    if (notes === (task.notes ?? "")) return;
+    onUpdate({ notes: notes || null });
+  };
+
+  const handleImageFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      window.alert("La imagen es demasiado grande (máx. 3 MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => onUpdate({ image: reader.result as string });
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div
-      ref={cardRef}
-      // Solo arrastrable fuera de edición: si no, clicar dentro de un campo para seleccionar
-      // texto o abrir el panel de detalles se interpretaría como el inicio de un drag.
-      draggable={editingField === null && !expanded}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      className={`group rounded-xl border border-border bg-background p-3 text-left transition-all ${
-        expanded ? "" : "cursor-grab active:cursor-grabbing"
-      } ${isDragged ? "opacity-40" : ""} ${justFocused ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-foreground/50 p-4"
+      onClick={onClose}
     >
-      <div className="flex items-start justify-between gap-2">
-        {editingField === "title" ? (
+      <div
+        ref={modalRef}
+        onClick={(e) => e.stopPropagation()}
+        style={customSize ? { width: `${customSize.modalWidth}px`, maxWidth: "95vw" } : undefined}
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8"
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
           <input
-            autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={saveTitle}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") {
-                setTitle(task.title);
-                setEditingField(null);
-              }
             }}
-            className="w-full min-w-0 border-b border-primary bg-transparent text-sm outline-none"
+            className="min-w-0 flex-1 border-b border-transparent bg-transparent font-serif text-2xl outline-none focus:border-primary"
           />
-        ) : (
-          <button
-            onClick={() => setEditingField("title")}
-            title="Haz clic para editar"
-            className={`min-w-0 flex-1 cursor-text text-left text-sm decoration-dotted hover:underline ${
-              task.status === "done" ? "text-muted-foreground line-through" : ""
-            }`}
-          >
-            {task.title}
+          <button type="button" onClick={onClose} className="shrink-0 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            ✕ Cerrar
           </button>
-        )}
-        <button
-          onClick={onDelete}
-          className="shrink-0 cursor-pointer text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-          aria-label="Eliminar tarea"
-        >
-          ✕
-        </button>
-      </div>
+        </div>
 
-      {editingField === "description" ? (
-        <textarea
-          autoFocus
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={saveDescription}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setDescription(task.description ?? "");
-              setEditingField(null);
-            }
-          }}
-          rows={2}
-          className="mt-1.5 w-full resize-y border-b border-primary bg-transparent text-xs outline-none"
-        />
-      ) : task.description ? (
-        <button
-          onClick={() => setEditingField("description")}
-          title="Haz clic para editar"
-          className="mt-1.5 block w-full cursor-text text-left text-xs text-muted-foreground decoration-dotted hover:underline"
+        {/* Dos columnas desde md: a la izquierda lo "de escribir" (imagen, descripción, notas
+            libres); a la derecha lo "de organizar" (subtareas, fecha, proyecto, etiquetas,
+            tiempo). En pantallas estrechas se apilan en una sola columna. */}
+        <div
+          className="grid grid-cols-1 gap-6 md:grid-cols-2"
+          style={customSize ? { gridTemplateColumns: `${customSize.leftWidth}px minmax(0, 1fr)` } : undefined}
         >
-          {task.description}
-        </button>
-      ) : (
-        <button
-          onClick={() => setEditingField("description")}
-          className="mt-1.5 block cursor-text text-left text-xs italic text-muted-foreground/60 hover:underline"
-        >
-          + Añadir descripción
-        </button>
-      )}
-
-      {/* Insignias compactas: siempre visibles aunque el panel de detalles esté cerrado */}
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <button
-          onClick={onCyclePriority}
-          className={`cursor-pointer rounded-full px-2 py-0.5 text-[10px] font-medium transition-opacity hover:opacity-80 ${PRIORITY_STYLES[task.priority]}`}
-        >
-          {PRIORITY_LABELS[task.priority]}
-        </button>
-        {badge && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.className}`}>📅 {badge.label}</span>}
-        {project && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">📁 {project.title}</span>}
-        {subtasks.length > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-            ☑ {doneSubtasks}/{subtasks.length}
-          </span>
-        )}
-        {(task.estimatedMinutes || task.actualMinutes > 0) && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-            ⏱ {task.actualMinutes}
-            {task.estimatedMinutes ? `/${task.estimatedMinutes}` : ""} min
-          </span>
-        )}
-        {task.tags.map((tag) => (
-          <span key={tag} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
-            #{tag}
-          </span>
-        ))}
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="ml-auto cursor-pointer text-[10px] text-muted-foreground underline decoration-dotted hover:text-foreground"
-        >
-          {expanded ? "Ocultar detalles" : "Detalles"}
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="mt-3 space-y-3 border-t border-border pt-3">
-          {/* Subtareas */}
           <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Subtareas</p>
-            <ul className="space-y-1">
-              {subtasks.map((s) => (
-                <li key={s.id} className="group/sub flex items-center gap-2">
-                  <button
-                    onClick={() => onToggleSubtask(s)}
-                    className={`flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm border text-[9px] ${
-                      s.completed ? "border-primary bg-primary/20 text-primary" : "border-foreground/30"
-                    }`}
-                  >
-                    {s.completed ? "✓" : ""}
-                  </button>
-                  <span className={`flex-1 text-xs ${s.completed ? "text-muted-foreground line-through" : ""}`}>{s.title}</span>
-                  <button
-                    onClick={() => onRemoveSubtask(s.id)}
-                    className="cursor-pointer text-[10px] text-muted-foreground opacity-0 hover:text-destructive group-hover/sub:opacity-100"
-                    aria-label="Eliminar subtarea"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                onAddSubtask(newSubtask);
-                setNewSubtask("");
-              }}
-              className="mt-1.5 flex gap-1.5"
-            >
-              <input
-                value={newSubtask}
-                onChange={(e) => setNewSubtask(e.target.value)}
-                placeholder="+ Paso"
-                className="field-input w-full text-xs"
-              />
-              <button type="submit" className="shrink-0 cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">
-                OK
+            {task.image && <img src={task.image} alt="" className="mb-3 max-h-56 w-full rounded-xl object-cover" />}
+            <div className="mb-4 flex items-center gap-3 text-xs">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="cursor-pointer text-muted-foreground hover:text-foreground"
+              >
+                {task.image ? "🖼 Cambiar imagen" : "🖼 Añadir imagen"}
               </button>
-            </form>
-          </div>
-
-          {/* Fecha límite */}
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Fecha límite</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={toDateInputValue(task.dueDate)}
-                onChange={(e) => onUpdate({ dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                className="field-input text-xs"
-              />
-              {task.dueDate && (
-                <button onClick={() => onUpdate({ dueDate: null })} className="cursor-pointer text-xs text-muted-foreground hover:text-destructive">
-                  Quitar
+              {task.image && (
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ image: null })}
+                  className="cursor-pointer text-muted-foreground hover:text-destructive"
+                >
+                  Quitar imagen
                 </button>
               )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  handleImageFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
             </div>
+
+            <label className="mb-4 flex flex-col gap-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Descripción
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onBlur={saveDescription}
+                rows={2}
+                placeholder="Resumen corto (opcional)"
+                className="field-input w-full resize-y text-sm normal-case tracking-normal"
+              />
+            </label>
+
+            {/* Recuadro grande SIN nombre — todo lo demás que el usuario quiera escribir.
+                `w-full` es solo el ancho DE PARTIDA (ocupa toda la columna antes de tocar nada);
+                `resize` (no solo `resize-y`) deja tirar tanto del ancho como del alto, para
+                agrandarlo o para encogerlo — al arrastrar, el navegador fija un ancho en línea
+                que manda por encima de `w-full`, así que puede bajar de eso hasta el suelo de
+                `min-w-[12rem]` (para que no quede inservible) o subir todo lo que haga falta. El
+                `ResizeObserver` de arriba sigue ese ancho en ambos sentidos y ajusta el diálogo
+                entero para que nunca se solape con la columna de la derecha ni se quede con un
+                hueco de sobra. */}
+            <textarea
+              ref={notesRef}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              rows={10}
+              placeholder="Escribe aquí…"
+              className="field-input w-full min-w-[12rem] resize text-sm"
+            />
           </div>
 
-          {/* Proyecto */}
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Proyecto</p>
-            <select
-              value={task.projectId ?? ""}
-              onChange={(e) => onUpdate({ projectId: e.target.value ? Number(e.target.value) : null })}
-              className="field-input w-full text-xs"
-            >
-              <option value="">Sin proyecto</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Etiquetas */}
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Etiquetas</p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {task.tags.map((tag) => (
-                <span key={tag} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
-                  #{tag}
-                  <button
-                    onClick={() => onUpdate({ tags: task.tags.filter((t) => t !== tag) })}
-                    className="cursor-pointer hover:text-destructive"
-                    aria-label={`Quitar etiqueta ${tag}`}
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
+          <div className="space-y-4 border-t border-border pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+            {/* Subtareas */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Subtareas</p>
+              <ul className="space-y-1">
+                {subtasks.map((s) => (
+                  <li key={s.id} className="group/sub flex items-center gap-2">
+                    <button
+                      onClick={() => onToggleSubtask(s)}
+                      className={`flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm border text-[9px] ${
+                        s.completed ? "border-primary bg-primary/20 text-primary" : "border-foreground/30"
+                      }`}
+                    >
+                      {s.completed ? "✓" : ""}
+                    </button>
+                    <span className={`flex-1 text-xs ${s.completed ? "text-muted-foreground line-through" : ""}`}>{s.title}</span>
+                    <button
+                      onClick={() => onRemoveSubtask(s.id)}
+                      className="cursor-pointer text-[10px] text-muted-foreground opacity-0 hover:text-destructive group-hover/sub:opacity-100"
+                      aria-label="Eliminar subtarea"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  const trimmed = newTag.trim().toLowerCase();
-                  if (!trimmed || task.tags.includes(trimmed)) return;
-                  onUpdate({ tags: [...task.tags, trimmed] });
-                  setNewTag("");
+                  onAddSubtask(newSubtask);
+                  setNewSubtask("");
                 }}
-                className="flex gap-1"
+                className="mt-1.5 flex gap-1.5"
               >
                 <input
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="+ etiqueta"
-                  className="field-input w-24 text-xs"
+                  value={newSubtask}
+                  onChange={(e) => setNewSubtask(e.target.value)}
+                  placeholder="+ Paso"
+                  className="field-input w-full text-xs"
                 />
-                <button type="submit" className="cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">
+                <button
+                  type="submit"
+                  className="shrink-0 cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted"
+                >
                   OK
                 </button>
               </form>
             </div>
-          </div>
 
-          {/* Tiempo estimado vs. real */}
-          <div>
-            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tiempo (minutos)</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                Estimado
+            {/* Fecha límite */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Fecha límite</p>
+              <div className="flex items-center gap-2">
                 <input
-                  type="number"
-                  min={1}
-                  defaultValue={task.estimatedMinutes ?? ""}
-                  onBlur={(e) => {
-                    const value = e.target.value ? Number(e.target.value) : null;
-                    if (value !== task.estimatedMinutes) onUpdate({ estimatedMinutes: value });
-                  }}
-                  className="field-input w-16 text-xs"
+                  type="date"
+                  value={toDateInputValue(task.dueDate)}
+                  onChange={(e) => onUpdate({ dueDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="field-input text-xs"
                 />
-              </label>
-              <span className="text-xs text-muted-foreground">Real: {task.actualMinutes}</span>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  onLogTime(Number(minutesToLog));
-                  setMinutesToLog("");
-                }}
-                className="flex items-center gap-1.5"
+                {task.dueDate && (
+                  <button onClick={() => onUpdate({ dueDate: null })} className="cursor-pointer text-xs text-muted-foreground hover:text-destructive">
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Proyecto */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Proyecto</p>
+              <select
+                value={task.projectId ?? ""}
+                onChange={(e) => onUpdate({ projectId: e.target.value ? Number(e.target.value) : null })}
+                className="field-input w-full text-xs"
               >
-                <input
-                  type="number"
-                  min={1}
-                  value={minutesToLog}
-                  onChange={(e) => setMinutesToLog(e.target.value)}
-                  placeholder="+min"
-                  className="field-input w-16 text-xs"
-                />
-                <button type="submit" className="cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">
-                  Registrar
-                </button>
-              </form>
+                <option value="">Sin proyecto</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Etiquetas */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Etiquetas</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {task.tags.map((tag) => (
+                  <span key={tag} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                    #{tag}
+                    <button
+                      onClick={() => onUpdate({ tags: task.tags.filter((t) => t !== tag) })}
+                      className="cursor-pointer hover:text-destructive"
+                      aria-label={`Quitar etiqueta ${tag}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const trimmed = newTag.trim().toLowerCase();
+                    if (!trimmed || task.tags.includes(trimmed)) return;
+                    onUpdate({ tags: [...task.tags, trimmed] });
+                    setNewTag("");
+                  }}
+                  className="flex gap-1"
+                >
+                  <input
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    placeholder="+ etiqueta"
+                    className="field-input w-24 text-xs"
+                  />
+                  <button type="submit" className="cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">
+                    OK
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Tiempo estimado vs. real */}
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Tiempo (minutos)</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Estimado
+                  <input
+                    type="number"
+                    min={1}
+                    defaultValue={task.estimatedMinutes ?? ""}
+                    onBlur={(e) => {
+                      const value = e.target.value ? Number(e.target.value) : null;
+                      if (value !== task.estimatedMinutes) onUpdate({ estimatedMinutes: value });
+                    }}
+                    className="field-input w-16 text-xs"
+                  />
+                </label>
+                <span className="text-xs text-muted-foreground">Real: {task.actualMinutes}</span>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    onLogTime(Number(minutesToLog));
+                    setMinutesToLog("");
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    value={minutesToLog}
+                    onChange={(e) => setMinutesToLog(e.target.value)}
+                    placeholder="+min"
+                    className="field-input w-16 text-xs"
+                  />
+                  <button type="submit" className="cursor-pointer rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">
+                    Registrar
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
         </div>
-      )}
+
+        <div className="mt-6 flex justify-end border-t border-border pt-4">
+          <button
+            onClick={() => {
+              if (!confirmingDelete) {
+                setConfirmingDelete(true);
+                return;
+              }
+              onDelete();
+            }}
+            onBlur={() => setConfirmingDelete(false)}
+            className={`cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 text-xs transition-colors ${
+              confirmingDelete
+                ? "bg-destructive text-destructive-foreground"
+                : "border border-border text-muted-foreground hover:text-destructive"
+            }`}
+          >
+            {confirmingDelete ? "¿Confirmar eliminar?" : "Eliminar tarea"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

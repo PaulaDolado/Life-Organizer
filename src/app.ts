@@ -27,8 +27,10 @@ export function createApp(): Application {
   // que el límite general de abajo no aplica dos veces sobre estas rutas. Las páginas
   // personalizadas (/custom-pages) comparten el mismo problema con la plantilla "nota" (HTML
   // con imágenes) y con "kanban" (imagen embebida por tarjeta, ver CustomPagePage en el dashboard).
+  // /planner también: cada tarea del tablero admite ahora su propia imagen (ver Task.image).
   app.use("/projects", express.json({ limit: "10mb" }));
   app.use("/custom-pages", express.json({ limit: "10mb" }));
+  app.use("/planner", express.json({ limit: "10mb" }));
   app.use(express.json({ limit: "100kb" }));
   app.use(
     morgan(env.isProduction ? "combined" : "dev", {

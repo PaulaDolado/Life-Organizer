@@ -14,8 +14,15 @@ import { HobbiesPage } from "./HobbiesPage";
 import { CustomPagePage } from "./CustomPagePage";
 import { CustomPageSummary, CustomPageTemplate } from "../types";
 
+// Tras conectar Google Calendar (ver GoogleCalendarMenu en AgendaPage), Google redirige el
+// navegador completo de vuelta a la raíz con `?google=connected|error` en la URL — como no hay
+// router real (ver App.tsx), sin este chequeo el usuario aterrizaría en "Hoy" sin ver el aviso.
+function initialTab(): Tab {
+  return new URLSearchParams(window.location.search).has("google") ? "agenda" : "hoy";
+}
+
 export function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("hoy");
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Páginas personalizadas ("+ Nueva página", ver AppShell): una única carga aquí arriba, tanto
   // para pintar el menú lateral como para saber qué plantilla renderizar cuando activeTab

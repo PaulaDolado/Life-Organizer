@@ -20,9 +20,18 @@ export const listTasksQuerySchema = Joi.object({
 
 const tagsSchema = Joi.array().items(Joi.string().trim().min(1).max(30)).max(MAX_TAGS);
 
+// `image` es una foto embebida como data URL (igual que en las páginas de proyecto y el kanban
+// de páginas personalizadas) — límite generoso por lo mismo, unos MB en base64. `notes` es el
+// recuadro grande sin nombre del diálogo de detalles: mucho más margen que `description` (que
+// sigue siendo el resumen corto) porque es justo el sitio para "todo lo demás".
+const imageSchema = Joi.string().max(8_000_000).allow(null, "");
+const notesSchema = Joi.string().max(20_000).allow(null, "");
+
 export const createTaskSchema = Joi.object({
   title: Joi.string().min(1).max(150).required(),
   description: Joi.string().max(2000).allow(null, ""),
+  image: imageSchema,
+  notes: notesSchema,
   status: Joi.string().valid(...STATUSES),
   priority: Joi.string().valid(...PRIORITIES),
   order: Joi.number(),
@@ -35,6 +44,8 @@ export const createTaskSchema = Joi.object({
 export const updateTaskSchema = Joi.object({
   title: Joi.string().min(1).max(150),
   description: Joi.string().max(2000).allow(null, ""),
+  image: imageSchema,
+  notes: notesSchema,
   status: Joi.string().valid(...STATUSES),
   priority: Joi.string().valid(...PRIORITIES),
   order: Joi.number(),

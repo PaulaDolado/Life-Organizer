@@ -1,4 +1,4 @@
-# Life Organizer — Móvil (Fase 1, offline con SQLite)
+# Tidely — Móvil (Fase 1, offline con SQLite)
 
 App Expo/React Native que replica localmente en SQLite el subconjunto de datos de uso diario
 más valioso — eventos, tareas, hábitos y notas — y sincroniza con el backend (Postgres, sigue

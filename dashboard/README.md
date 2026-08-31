@@ -1,6 +1,6 @@
-# Life Organizer — Dashboard demo
+# Tidely — Dashboard demo
 
-Dashboard en React + TypeScript + Vite que consume la [Life Organizer API](../README.md). Diseño adaptado de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23) ("Stoa OS", un prototipo generado con [Lovable](https://lovable.dev) con el mismo concepto — agenda/finanzas/proyectos/hobbies) — ver [Origen del diseño](#origen-del-diseño-y-qué-se-adaptó) más abajo para qué se copió tal cual y qué se adaptó a nuestra API real.
+Dashboard en React + TypeScript + Vite que consume la [Tidely API](../README.md). Diseño adaptado de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23) ("Stoa OS", un prototipo generado con [Lovable](https://lovable.dev) con el mismo concepto — agenda/finanzas/proyectos/hobbies) — ver [Origen del diseño](#origen-del-diseño-y-qué-se-adaptó) más abajo para qué se copió tal cual y qué se adaptó a nuestra API real.
 
 ## Qué incluye
 

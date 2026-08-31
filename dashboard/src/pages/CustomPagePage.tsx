@@ -541,20 +541,28 @@ function KanbanTemplate({ columns, onChange }: { columns: KanbanColumn[]; onChan
     }
   };
 
-  const addCard = (columnId: string, text: string) => {
-    onChange(columns.map((c) => (c.id === columnId ? { ...c, cards: [...c.cards, { id: newId(), text, image: null }] } : c)));
+  const addCard = (columnId: string, text: string, description: string) => {
+    onChange(
+      columns.map((c) =>
+        c.id === columnId
+          ? { ...c, cards: [...c.cards, { id: newId(), text, image: null, description: description || undefined }] }
+          : c
+      )
+    );
   };
 
   const removeCard = (columnId: string, cardId: string) => {
     onChange(columns.map((c) => (c.id === columnId ? { ...c, cards: c.cards.filter((card) => card.id !== cardId) } : c)));
   };
 
-  // Añadir, cambiar (sobrescribe la anterior) o quitar (image: null) la imagen de una tarjeta —
-  // las tres acciones son la misma operación: reemplazar el campo `image` de esa tarjeta.
-  const setCardImage = (columnId: string, cardId: string, image: string | null) => {
+  // Cualquier cambio sobre una tarjeta existente (texto, imagen, descripción o notas) pasa por
+  // aquí — el diálogo de detalles (KanbanCardDialog) llama a esto con solo los campos que ha tocado.
+  const updateCard = (columnId: string, cardId: string, fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => {
     onChange(
       columns.map((c) =>
-        c.id === columnId ? { ...c, cards: c.cards.map((card) => (card.id === cardId ? { ...card, image } : card)) } : c
+        c.id === columnId
+          ? { ...c, cards: c.cards.map((card) => (card.id === cardId ? { ...card, ...fields } : card)) }
+          : c
       )
     );
   };
@@ -594,9 +602,9 @@ function KanbanTemplate({ columns, onChange }: { columns: KanbanColumn[]; onChan
           onRename={(title) => renameColumn(column.id, title)}
           onDeleteClick={(e) => handleDeleteColumnClick(e, column)}
           onDeleteBlur={() => setConfirmingColumnId((id) => (id === column.id ? null : id))}
-          onAddCard={(text) => addCard(column.id, text)}
+          onAddCard={(text, description) => addCard(column.id, text, description)}
           onRemoveCard={(cardId) => removeCard(column.id, cardId)}
-          onCardImageChange={(cardId, image) => setCardImage(column.id, cardId, image)}
+          onCardUpdate={(cardId, fields) => updateCard(column.id, cardId, fields)}
         />
       ))}
     </div>
@@ -643,7 +651,7 @@ function KanbanColumnView({
   onDeleteBlur,
   onAddCard,
   onRemoveCard,
-  onCardImageChange,
+  onCardUpdate,
 }: {
   column: KanbanColumn;
   style: { box: string; header: string };
@@ -654,19 +662,23 @@ function KanbanColumnView({
   onRename: (title: string) => void;
   onDeleteClick: (e: React.MouseEvent) => void;
   onDeleteBlur: () => void;
-  onAddCard: (text: string) => void;
+  onAddCard: (text: string, description: string) => void;
   onRemoveCard: (cardId: string) => void;
-  onCardImageChange: (cardId: string, image: string | null) => void;
+  onCardUpdate: (cardId: string, fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [cardText, setCardText] = useState("");
+  const [cardDescription, setCardDescription] = useState("");
 
   const submitCard = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = cardText.trim();
     if (!trimmed) return;
-    onAddCard(trimmed);
+    onAddCard(trimmed, cardDescription.trim());
     setCardText("");
+    setCardDescription("");
+    setAdding(false);
   };
 
   return (
@@ -716,95 +728,310 @@ function KanbanColumnView({
             isDragged={draggedCardId === card.id}
             onDragStart={() => onDragStartCard(card.id)}
             onRemove={() => onRemoveCard(card.id)}
-            onImageChange={(image) => onCardImageChange(card.id, image)}
+            onUpdate={(fields) => onCardUpdate(card.id, fields)}
           />
         ))}
       </div>
 
-      <form onSubmit={submitCard} className="flex gap-1">
-        <input
-          value={cardText}
-          onChange={(e) => setCardText(e.target.value)}
-          placeholder="+ Tarjeta"
-          className="field-input flex-1 text-xs"
-        />
-      </form>
+      {!adding ? (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="w-full cursor-pointer rounded-xl border border-dashed border-border px-3 py-2 text-center text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+        >
+          + Tarjeta
+        </button>
+      ) : (
+        <form onSubmit={submitCard} className="space-y-2">
+          <input
+            autoFocus
+            value={cardText}
+            onChange={(e) => setCardText(e.target.value)}
+            placeholder="Título de la tarjeta"
+            className="field-input w-full text-sm"
+          />
+          <textarea
+            value={cardDescription}
+            onChange={(e) => setCardDescription(e.target.value)}
+            placeholder="Descripción (opcional)"
+            rows={2}
+            className="field-input w-full resize-y text-sm"
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="btn-dark flex-1 text-xs">
+              Añadir
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setCardText("");
+                setCardDescription("");
+              }}
+              className="cursor-pointer rounded-full border border-border px-3 text-xs text-muted-foreground transition-colors hover:bg-muted"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
 
+// La tarjeta es solo una vista previa (texto + imagen) — clicarla abre KanbanCardDialog, donde
+// vive la edición de verdad (texto, imagen, notas). Mismo reparto vista-previa/diálogo que
+// TaskCard/TaskDetailDialog en el Planificador.
 function KanbanCardItem({
   card,
   isDragged,
   onDragStart,
   onRemove,
-  onImageChange,
+  onUpdate,
 }: {
   card: KanbanCard;
   isDragged: boolean;
   onDragStart: () => void;
   onRemove: () => void;
-  onImageChange: (image: string | null) => void;
+  onUpdate: (fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
 }) {
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  return (
+    <>
+      <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/plain", card.id);
+          onDragStart();
+        }}
+        onClick={() => setDetailOpen(true)}
+        title="Haz clic para ver los detalles"
+        className={`group cursor-grab rounded-xl border border-border bg-background p-3 text-sm transition-all active:cursor-grabbing ${isDragged ? "opacity-40" : ""}`}
+      >
+        {card.image && <img src={card.image} alt="" className="mb-2 max-h-40 w-full rounded-lg object-cover" />}
+
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{card.text}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            title="Eliminar tarjeta"
+            className="shrink-0 cursor-pointer text-xs opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+
+        {card.description && <p className="mt-1.5 truncate text-xs text-muted-foreground">{card.description}</p>}
+
+        {card.notes && <span className="mt-2 inline-block text-xs text-muted-foreground">📝</span>}
+      </div>
+
+      {detailOpen && <KanbanCardDialog card={card} onClose={() => setDetailOpen(false)} onUpdate={onUpdate} onRemove={onRemove} />}
+    </>
+  );
+}
+
+/**
+ * Diálogo de detalles de una tarjeta de kanban personalizado — mismo reparto de campos que
+ * TaskDetailDialog en el Planificador, pero solo con lo que se decidió compartir entre ambos:
+ * texto de la tarjeta, imagen y el recuadro grande SIN nombre para notas libres. Fecha
+ * límite/prioridad/subtareas/tiempo siguen siendo exclusivos del Planificador.
+ */
+function KanbanCardDialog({
+  card,
+  onClose,
+  onUpdate,
+  onRemove,
+}: {
+  card: KanbanCard;
+  onClose: () => void;
+  onUpdate: (fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
+  onRemove: () => void;
+}) {
+  const [text, setText] = useState(card.text);
+  const [description, setDescription] = useState(card.description ?? "");
+  const [notes, setNotes] = useState(card.notes ?? "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = async (file: File | undefined) => {
+  // El textarea de notas es redimensionable en ambas direcciones (ver className más abajo), para
+  // agrandarlo o para encogerlo. Igual que en TaskDetailDialog del Planificador: el propio
+  // diálogo sigue ese ancho en vez de dejar que el texto se salga por fuera (al agrandar) o que
+  // quede un hueco de sobra alrededor (al encoger) — aquí no hay una segunda columna con la que
+  // chocar, así que basta con ajustar el ancho del diálogo entero.
+  const modalRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const naturalSizeRef = useRef<{ modalWidth: number; notesWidth: number } | null>(null);
+  const [customModalWidth, setCustomModalWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const notesEl = notesRef.current;
+    if (!notesEl) return;
+    const observer = new ResizeObserver(() => {
+      if (!modalRef.current) return;
+      // La primera medida (antes de que el usuario toque el tirador) es la referencia "de
+      // fábrica" con la que comparar cuánto se ha movido, en cualquiera de los dos sentidos.
+      if (!naturalSizeRef.current) {
+        naturalSizeRef.current = { modalWidth: modalRef.current.getBoundingClientRect().width, notesWidth: notesEl.getBoundingClientRect().width };
+        return;
+      }
+      const { modalWidth, notesWidth } = naturalSizeRef.current;
+      const delta = notesEl.getBoundingClientRect().width - notesWidth;
+      if (Math.abs(delta) <= 2) {
+        setCustomModalWidth(null);
+        return;
+      }
+      // Al agrandar, tope en el 95% del ancho de la ventana; al encoger, el propio `min-w-*`
+      // del textarea ya pone el límite.
+      const maxModalWidth = window.innerWidth * 0.95;
+      const clampedDelta = delta > 0 ? Math.min(delta, Math.max(maxModalWidth - modalWidth, 0)) : delta;
+      setCustomModalWidth(modalWidth + clampedDelta);
+    });
+    observer.observe(notesEl);
+    return () => observer.disconnect();
+  }, []);
+
+  const saveText = () => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setText(card.text);
+      return;
+    }
+    if (trimmed === card.text) return;
+    onUpdate({ text: trimmed });
+  };
+
+  const saveDescription = () => {
+    const trimmed = description.trim();
+    if (trimmed === (card.description ?? "")) return;
+    onUpdate({ description: trimmed || undefined });
+  };
+
+  const saveNotes = () => {
+    if (notes === (card.notes ?? "")) return;
+    onUpdate({ notes: notes || null });
+  };
+
+  const handleImageFile = async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
     if (file.size > MAX_IMAGE_BYTES) {
       window.alert("La imagen es demasiado grande (máx. 3 MB).");
       return;
     }
-    onImageChange(await readImageFile(file));
+    onUpdate({ image: await readImageFile(file) });
   };
 
   return (
     <div
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", card.id);
-        onDragStart();
-      }}
-      className={`group rounded-xl border border-border bg-background p-3 text-sm transition-all ${isDragged ? "opacity-40" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-foreground/50 p-4"
+      onClick={onClose}
     >
-      {card.image && (
-        <div className="relative mb-2 -mt-1">
-          <img src={card.image} alt="" className="max-h-40 w-full rounded-lg object-cover" />
-        </div>
-      )}
-
-      <div className="flex cursor-grab items-start justify-between gap-2 active:cursor-grabbing">
-        <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{card.text}</span>
-        <button
-          type="button"
-          onClick={onRemove}
-          title="Eliminar tarjeta"
-          className="shrink-0 cursor-pointer text-xs opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-        <button type="button" onClick={() => fileInputRef.current?.click()} className="cursor-pointer hover:text-foreground">
-          {card.image ? "🖼 Cambiar imagen" : "🖼 Añadir imagen"}
-        </button>
-        {card.image && (
-          <button type="button" onClick={() => onImageChange(null)} className="cursor-pointer hover:text-destructive">
-            Quitar imagen
+      <div
+        ref={modalRef}
+        onClick={(e) => e.stopPropagation()}
+        style={customModalWidth ? { width: `${customModalWidth}px`, maxWidth: "95vw" } : undefined}
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8"
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={saveText}
+            rows={1}
+            className="min-w-0 flex-1 resize-none border-b border-transparent bg-transparent font-serif text-2xl outline-none focus:border-primary"
+          />
+          <button type="button" onClick={onClose} className="shrink-0 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            ✕ Cerrar
           </button>
-        )}
+        </div>
+
+        {card.image && <img src={card.image} alt="" className="mb-3 max-h-56 w-full rounded-xl object-cover" />}
+        <div className="mb-5 flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            {card.image ? "🖼 Cambiar imagen" : "🖼 Añadir imagen"}
+          </button>
+          {card.image && (
+            <button
+              type="button"
+              onClick={() => onUpdate({ image: null })}
+              className="cursor-pointer text-muted-foreground hover:text-destructive"
+            >
+              Quitar imagen
+            </button>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void handleImageFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+
+        <label className="mb-4 flex flex-col gap-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          Descripción
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={saveDescription}
+            rows={2}
+            placeholder="Resumen corto (opcional)"
+            className="field-input w-full resize-y text-sm normal-case tracking-normal"
+          />
+        </label>
+
+        {/* Recuadro grande SIN nombre — todo lo demás que el usuario quiera escribir.
+            `w-full` es solo el ancho DE PARTIDA; `resize` (no solo `resize-y`) deja tirar tanto
+            del ancho como del alto — al arrastrar, el navegador fija un ancho en línea que manda
+            por encima de `w-full`, así que puede bajar hasta el suelo de `min-w-[12rem]` o subir
+            lo que haga falta. El `ResizeObserver` de arriba sigue ese ancho en ambos sentidos y
+            ajusta el diálogo entero. */}
+        <textarea
+          ref={notesRef}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={saveNotes}
+          rows={8}
+          placeholder="Escribe aquí…"
+          className="field-input mb-5 w-full min-w-[12rem] resize text-sm"
+        />
+
+        <div className="flex justify-end border-t border-border pt-4">
+          <button
+            onClick={() => {
+              if (!confirmingDelete) {
+                setConfirmingDelete(true);
+                return;
+              }
+              onRemove();
+              onClose();
+            }}
+            onBlur={() => setConfirmingDelete(false)}
+            className={`cursor-pointer whitespace-nowrap rounded-full px-4 py-1.5 text-xs transition-colors ${
+              confirmingDelete
+                ? "bg-destructive text-destructive-foreground"
+                : "border border-border text-muted-foreground hover:text-destructive"
+            }`}
+          >
+            {confirmingDelete ? "¿Confirmar eliminar?" : "Eliminar tarjeta"}
+          </button>
+        </div>
       </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          void handleFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

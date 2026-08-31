@@ -36,6 +36,7 @@ El "envío" de emails de verificación (`src/utils/mailer.ts`) es solo un `logge
 | GET | `/agenda/day/:date` | JWT | Eventos del día (`YYYY-MM-DD`), en la timezone del usuario. `?type=`, `?page=`, `?limit=` |
 | GET | `/agenda/week/:date` | JWT | Eventos de la semana que contiene esa fecha (lunes-domingo). Mismos filtros |
 | GET | `/agenda/month/:date` | JWT | Eventos del mes que contiene esa fecha. Mismos filtros (`?limit=` por defecto 200) |
+| GET | `/agenda/year/:date` | JWT | Recuento de eventos por día (`{ year, timezone, counts: {"YYYY-MM-DD": n} }`) del año que contiene esa fecha, incluidas ocurrencias recurrentes expandidas — para la vista anual (12 mini-meses), sin el detalle completo de cada evento |
 | GET | `/agenda/free-time/:date` | JWT | Huecos libres del día (08:00–22:00 local) + sugerencias de tareas del Planificador que encajan (ver más abajo) |
 | POST | `/agenda/events` | JWT | Crea evento. `isRecurring`+`recurringPattern` (`daily`\|`weekly`\|`biweekly`\|`monthly`) para series recurrentes. `reminderMinutesBefore` (minutos, default `[30]`) y `guests` (nombres/emails, default `[]`) opcionales |
 | PUT | `/agenda/events/:id` | JWT | Edita — afecta a **toda la serie** si es recurrente |
@@ -52,6 +53,20 @@ Los recordatorios de evento (`Notification` tipo `event_reminder`) usan `reminde
 `GET /agenda/free-time/:date` devuelve `{ freeBlocks: [{start, end, durationMinutes}], suggestions: [{block, task}] }`: los huecos ≥15 min entre eventos dentro de 08:00–22:00, y para cada uno (en orden cronológico) la tarea pendiente del Planificador de mayor prioridad con `estimatedMinutes` que quepa y no se haya sugerido ya en otro hueco.
 
 El `.ics` exportado incluye RRULE (recurrencia), EXDATE (ocurrencias canceladas) y un VEVENT con RECURRENCE-ID por cada ocurrencia movida — ver `utils/ics.ts`. El import es best-effort: mapea `FREQ=DAILY`/`WEEKLY`/`WEEKLY;INTERVAL=2`/`MONTHLY` a `daily`/`weekly`/`biweekly`/`monthly` (otra recurrencia se importa como evento único) y no reconstruye excepciones (`RECURRENCE-ID` se ignora).
+
+## Integraciones — Google Calendar
+
+Solo importación (de lectura): trae los eventos del calendario `primary` de Google a `Event` (con `source: "google"`), nunca escribe en Google. Requiere `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` configurados en el servidor (ver `.env.example`) — sin ellos, responde 400 "no configurada".
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/integrations/google/status` | JWT | `{ connected, email?, lastSyncedAt? }` |
+| GET | `/integrations/google/connect` | JWT | `{ url }` — URL de consentimiento de Google a la que redirigir el **navegador completo** (no un fetch) |
+| GET | `/integrations/google/callback` | Público | La abre el propio Google redirigiendo el navegador tras el consentimiento — nunca se llama a mano. Redirige de vuelta al dashboard con `?google=connected` o `?google=error` |
+| POST | `/integrations/google/sync` | JWT | Sincroniza ahora. Devuelve `{ imported, updated, removed }` |
+| DELETE | `/integrations/google/disconnect` | JWT | Revoca el token, borra la conexión y todos los eventos que se habían importado de ella |
+
+La ventana sincronizada es de 30 días atrás a 180 días adelante desde "ahora". Además de la sincronización manual, un cron interno (`googleCalendarSyncScheduler`) sincroniza a todos los usuarios conectados cada 30 min. Las series recurrentes de Google llegan expandidas en ocurrencias sueltas (`singleEvents: true` en la API de Google) en vez de replicarse como `Event.isRecurring` — cada ocurrencia es su propio `Event` con `googleEventId`. Editar un evento `source: "google"` desde Tidely no se refleja en Google, y la siguiente sincronización lo sobrescribe con la versión de Google.
 
 ## Horario (Schedule)
 

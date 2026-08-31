@@ -215,8 +215,7 @@ export function AppShell({
           <div className="relative shrink-0" style={{ width: sidebarWidth }}>
             <aside className="sticky top-0 flex h-screen w-full flex-col gap-10 border-r border-border p-8">
               <div className="flex items-center gap-3">
-                <div className="size-8 shrink-0 rounded-full bg-primary" />
-                <span className="truncate text-xl font-semibold tracking-tight">Life Organizer</span>
+                <span className="truncate text-xl font-semibold tracking-tight">Tidely</span>
               </div>
 
               <GlobalSearch onNavigate={onSearchNavigate} />
@@ -341,8 +340,6 @@ export function AppShell({
               </div>
 
               <div className="mt-auto space-y-4">
-                <NotificationsWidget />
-
                 <div className="rounded-2xl border border-secondary bg-secondary/30 p-4">
                   <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Próximo evento</p>
                   {next ? (
@@ -463,6 +460,13 @@ export function AppShell({
           </button>
         </nav>
         <main className="p-6 lg:p-12">{children}</main>
+      </div>
+
+      {/* Fija en la esquina inferior derecha, fuera del menú — así se ve en todas las páginas
+          (y aunque el menú esté colapsado o en la barra plana de móvil), no solo cuando el menú
+          lateral está desplegado. */}
+      <div className="fixed bottom-6 right-6 z-30">
+        <NotificationsWidget />
       </div>
 
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
@@ -618,8 +622,14 @@ function SearchResultRow({ title, subtitle, onClick }: { title: string; subtitle
   );
 }
 
+/**
+ * Antes vivía dentro del menú lateral (solo visible con el menú desplegado, y ni siquiera existía
+ * en la barra plana de móvil) — ahora es un botón flotante fijo en la esquina inferior derecha,
+ * fuera del <aside>, así que se ve en cualquier página y da igual si el menú está colapsado.
+ */
 function NotificationsWidget() {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { data, reload } = useFetch(
     () => api.get<{ notifications: Notification[] }>("/notifications?unreadOnly=true&limit=5"),
     []
@@ -630,6 +640,16 @@ function NotificationsWidget() {
   );
   const unread = countData?.unreadCount ?? 0;
 
+  // Al ser un botón flotante suelto (no parte de la fila del menú), cierra al hacer clic fuera —
+  // igual patrón que GlobalSearch más abajo.
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
   const markAllRead = async () => {
     await api.put("/notifications/read-all");
     reload();
@@ -637,23 +657,15 @@ function NotificationsWidget() {
   };
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-2xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:border-primary/30"
-      >
-        <span className="flex items-center gap-2">
-          <span aria-hidden="true">🔔</span> Notificaciones
-        </span>
-        {unread > 0 && (
-          <span className="flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-            {unread}
-          </span>
-        )}
-      </button>
-
+    <div ref={containerRef} className="relative">
       {open && (
-        <div className="absolute bottom-full left-0 z-10 mb-2 w-full rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-soft)]">
+        <div className="absolute bottom-full right-0 z-10 mb-3 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-soft)]">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Notificaciones</p>
+            <button onClick={() => setOpen(false)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+              ✕
+            </button>
+          </div>
           {(data?.notifications.length ?? 0) === 0 ? (
             <p className="p-3 text-center text-xs text-muted-foreground">Sin notificaciones nuevas.</p>
           ) : (
@@ -673,6 +685,20 @@ function NotificationsWidget() {
           )}
         </div>
       )}
+
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Notificaciones"
+        title="Notificaciones"
+        className="relative flex size-14 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-xl shadow-[var(--shadow-soft)] transition-colors hover:border-primary/30"
+      >
+        <span aria-hidden="true">🔔</span>
+        {unread > 0 && (
+          <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground ring-2 ring-background">
+            {unread}
+          </span>
+        )}
+      </button>
     </div>
   );
 }

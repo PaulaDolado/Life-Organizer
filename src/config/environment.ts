@@ -31,6 +31,17 @@ export const env = {
     authWindowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? "900000", 10),
     authMax: parseInt(process.env.AUTH_RATE_LIMIT_MAX ?? "20", 10),
   },
+  // Integración de solo lectura con Google Calendar (ver googleCalendarService) — a diferencia
+  // del resto de variables, NO son obligatorias: sin ellas la app funciona igual, simplemente
+  // esa integración responde "no configurada" en vez de tumbar el arranque entero (a diferencia
+  // de JWT_SECRET/DATABASE_URL, que si faltan no hay app que levantar).
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    // URL del propio backend a la que Google redirige tras el consentimiento — debe coincidir
+    // EXACTAMENTE con un "Authorized redirect URI" del cliente OAuth en Google Cloud Console.
+    redirectUri: process.env.GOOGLE_REDIRECT_URI ?? "http://localhost:3000/integrations/google/callback",
+  },
   isProduction: (process.env.NODE_ENV ?? "development") === "production",
   isTest: (process.env.NODE_ENV ?? "development") === "test",
 };

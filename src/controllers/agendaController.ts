@@ -38,6 +38,17 @@ export async function getAgendaMonth(req: AuthRequest, res: Response, next: Next
   }
 }
 
+export async function getAgendaYear(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const { date } = req.params;
+    const result = await agendaService.getYear(userId, date);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getFreeTime(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;

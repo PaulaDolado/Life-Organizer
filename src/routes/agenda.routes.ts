@@ -31,7 +31,7 @@ router.use(authMiddleware);
  *         schema: { type: string, example: "2026-08-24" }
  *       - in: query
  *         name: type
- *         schema: { type: string, enum: [work, study, gym, meeting, free] }
+ *         schema: { type: string, enum: [work, study, gym, meeting, free, evento, cita] }
  *     responses:
  *       200: { description: Lista de eventos del día }
  */
@@ -56,7 +56,7 @@ router.get(
  *         schema: { type: string, example: "2026-08-24" }
  *       - in: query
  *         name: type
- *         schema: { type: string, enum: [work, study, gym, meeting, free] }
+ *         schema: { type: string, enum: [work, study, gym, meeting, free, evento, cita] }
  *     responses:
  *       200: { description: Lista de eventos de la semana }
  */
@@ -81,7 +81,7 @@ router.get(
  *         schema: { type: string, example: "2026-08-24" }
  *       - in: query
  *         name: type
- *         schema: { type: string, enum: [work, study, gym, meeting, free] }
+ *         schema: { type: string, enum: [work, study, gym, meeting, free, evento, cita] }
  *     responses:
  *       200: { description: Lista de eventos del mes }
  */
@@ -91,6 +91,23 @@ router.get(
   validate(eventTypeQuerySchema, "query"),
   agendaController.getAgendaMonth
 );
+
+/**
+ * @openapi
+ * /agenda/year/{date}:
+ *   get:
+ *     tags: [Agenda]
+ *     summary: Recuento de eventos por día del año que contiene la fecha dada (para la vista anual)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: date
+ *         required: true
+ *         schema: { type: string, example: "2026-08-24" }
+ *     responses:
+ *       200: { description: "{ year, timezone, counts: { 'YYYY-MM-DD': número } }" }
+ */
+router.get("/year/:date", validate(dateParamSchema, "params"), agendaController.getAgendaYear);
 
 /**
  * @openapi

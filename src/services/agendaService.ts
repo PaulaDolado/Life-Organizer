@@ -1,5 +1,5 @@
 import { prisma } from "../config/database";
-import { parseDateParam, dayRange, weekRange, monthRange, dayWorkWindow } from "../utils/dateHelpers";
+import { parseDateParam, dayRange, weekRange, monthRange, yearRange, zonedDateKey, dayWorkWindow } from "../utils/dateHelpers";
 import { expandRecurringEvent, EventExceptionLike } from "../utils/recurrence";
 import { buildIcs, parseIcs } from "../utils/ics";
 import { buildPagination } from "../utils/pagination";
@@ -110,6 +110,29 @@ export async function getMonth(userId: number, dateStr: string, filters: EventFi
   // el DEFAULT_LIMIT (50), insuficiente para un mes con varios eventos recurrentes activos.
   const { events, pagination } = await findEventsInRange(userId, start, end, { ...filters, limit: filters.limit ?? 200 });
   return { month: dateStr, monthStart: start, monthEnd: end, timezone, events, pagination };
+}
+
+/**
+ * Vista anual: no hace falta el evento completo por ocurrencia, solo cuántos hay cada día, para
+ * pintar el puntito en la cuadrícula de 12 mini-meses (ver YearGrid en el dashboard) — de ahí que
+ * no reutilice `findEventsInRange` con paginación normal, sino con un límite alto y una sola
+ * pasada de agregación en memoria. Un año con recurrencias diarias/semanales expandidas puede
+ * acumular varios cientos de ocurrencias; siguen siendo mucho más ligeras de mover que si
+ * devolviéramos el objeto Event completo de cada una solo para contar.
+ */
+export async function getYear(userId: number, dateStr: string) {
+  parseDateParam(dateStr);
+  const timezone = await getUserTimezone(userId);
+  const { start, end } = yearRange(dateStr, timezone);
+  const { events } = await findEventsInRange(userId, start, end, { limit: 5000 });
+
+  const counts: Record<string, number> = {};
+  for (const event of events) {
+    const key = zonedDateKey(event.startTime, timezone);
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+
+  return { year: dateStr.slice(0, 4), timezone, counts };
 }
 
 interface CreateEventInput {

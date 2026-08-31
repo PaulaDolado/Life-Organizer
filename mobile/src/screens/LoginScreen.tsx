@@ -19,7 +19,7 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <Text style={styles.title}>Life Organizer</Text>
+      <Text style={styles.title}>Tidely</Text>
       <Text style={styles.subtitle}>Inicia sesión para sincronizar tu Hoy</Text>
 
       <TextInput
