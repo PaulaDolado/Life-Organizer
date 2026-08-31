@@ -4,9 +4,23 @@ export const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
 });
 
+export const rowParamsSchema = Joi.object({
+  id: Joi.number().integer().positive().required(),
+  rowId: Joi.number().integer().positive().required(),
+});
+
+export const createScheduleSchema = Joi.object({
+  name: Joi.string().min(1).max(60).required(),
+}).options({ stripUnknown: true });
+
+export const updateScheduleSchema = Joi.object({
+  name: Joi.string().min(1).max(60).required(),
+}).options({ stripUnknown: true });
+
 // Texto libre por celda (asignatura, aula, lo que el usuario quiera escribir) — sin estructura
-// forzada, tal como pidió: "ya agrego yo cada asignatura en cada espacio".
-const CELL_MAX = 200;
+// forzada, tal como pidió: "ya agrego yo cada asignatura en cada espacio". Multilínea (ver
+// ScheduleCell en el dashboard), de ahí el límite más generoso que un campo de una sola línea.
+const CELL_MAX = 500;
 
 export const addRowSchema = Joi.object({
   timeLabel: Joi.string().max(50).allow(""),
@@ -21,6 +35,6 @@ export const updateRowSchema = Joi.object({
   friday: Joi.string().max(CELL_MAX).allow(""),
 }).min(1);
 
-export const moveRowSchema = Joi.object({
+export const moveSchema = Joi.object({
   direction: Joi.string().valid("up", "down").required(),
 });

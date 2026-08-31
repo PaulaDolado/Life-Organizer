@@ -273,7 +273,92 @@ export interface IcsImportResult {
   importedAsSingleOccurrence: number;
 }
 
-// Fila del horario semanal fijo (Agenda > Horario) — sin fechas, texto libre por día.
+// Páginas personalizadas ("+ Nueva página" en el menú lateral, ver AppShell/CreatePageModal).
+// Cada `template` determina la forma de `content` — el dashboard interpreta cada una con su
+// propio componente (ver CustomPageView).
+export type CustomPageTemplate = "nota" | "kanban" | "finanzas" | "proyectos" | "objetivos" | "agenda" | "hoy";
+
+// Fila devuelta por GET /custom-pages (lista para el menú) — sin `content`, que solo llega en el
+// detalle (GET /custom-pages/:id) para no cargar el JSON completo de cada página solo para pintar
+// el menú.
+export interface CustomPageSummary {
+  id: number;
+  title: string;
+  template: CustomPageTemplate;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KanbanCard {
+  id: string;
+  text: string;
+  // Imagen embebida como data URL (igual que RichTextEditor.insertImage) — null/undefined si la
+  // tarjeta no tiene ninguna. No es una URL a un archivo aparte: vive dentro del propio JSON de
+  // CustomPage.content, así que "añadir/actualizar/eliminar" es solo sobrescribir este campo.
+  image?: string | null;
+}
+
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  cards: KanbanCard[];
+}
+
+export interface FinanceEntry {
+  id: string;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  description: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface SimpleGoal {
+  id: string;
+  title: string;
+  target: number;
+  current: number;
+}
+
+export interface AgendaNote {
+  id: string;
+  date: string; // YYYY-MM-DD
+  text: string;
+}
+
+// Forma de `content` según `template` — union discriminada a mano (no hay un campo `type` dentro
+// del propio JSON: quien discrimina es el `template` de la página que lo contiene).
+export interface CustomPageContentMap {
+  nota: { html: string };
+  kanban: { columns: KanbanColumn[] };
+  finanzas: { entries: FinanceEntry[] };
+  proyectos: { items: ChecklistItem[] };
+  objetivos: { goals: SimpleGoal[] };
+  agenda: { items: AgendaNote[] };
+  hoy: { items: ChecklistItem[] };
+}
+
+export interface CustomPage extends CustomPageSummary {
+  content: CustomPageContentMap[CustomPageTemplate];
+}
+
+// Horario con nombre propio (Agenda > Horario) — el usuario puede tener varios (uno por
+// trimestre/semestre) y verlos apilados o de uno en uno con flechas (ver SchedulePage).
+export interface Schedule {
+  id: number;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Fila de un Schedule — sin fechas, texto libre (multilínea) por día.
 export interface ScheduleRow {
   id: number;
   order: number;
@@ -283,4 +368,23 @@ export interface ScheduleRow {
   wednesday: string;
   thursday: string;
   friday: string;
+}
+
+// Colores disponibles para la leyenda del calendario anual — igual paleta que el resto de la
+// app (ver CALENDAR_COLOR_CLASSES en el dashboard y CALENDAR_COLORS en el backend).
+export type CalendarColor = "primary" | "secondary" | "habit" | "hobby" | "positive" | "negative" | "warning" | "muted";
+
+// Categoría de la leyenda del calendario anual (Horario > vista anual) — compartida para toda la
+// cuenta, no por horario/trimestre.
+export interface CalendarLegendCategory {
+  id: number;
+  label: string;
+  color: CalendarColor;
+  order: number;
+}
+
+// Un día del calendario anual pintado con una categoría.
+export interface CalendarDayMark {
+  date: string; // YYYY-MM-DD
+  categoryId: number;
 }

@@ -24,8 +24,11 @@ export function createApp(): Application {
   // Las páginas de la libreta de un proyecto pueden llevar imágenes embebidas como data URL
   // en el HTML, mucho más pesadas que el resto de payloads de la API — de ahí el límite propio
   // para ese prefijo. body-parser no vuelve a leer el stream si el body ya viene parseado, así
-  // que el límite general de abajo no aplica dos veces sobre estas rutas.
+  // que el límite general de abajo no aplica dos veces sobre estas rutas. Las páginas
+  // personalizadas (/custom-pages) comparten el mismo problema con la plantilla "nota" (HTML
+  // con imágenes) y con "kanban" (imagen embebida por tarjeta, ver CustomPagePage en el dashboard).
   app.use("/projects", express.json({ limit: "10mb" }));
+  app.use("/custom-pages", express.json({ limit: "10mb" }));
   app.use(express.json({ limit: "100kb" }));
   app.use(
     morgan(env.isProduction ? "combined" : "dev", {

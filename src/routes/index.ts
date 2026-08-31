@@ -14,6 +14,8 @@ import searchRoutes from "./search.routes";
 import syncRoutes from "./sync.routes";
 import linkPreviewRoutes from "./linkPreview.routes";
 import scheduleRoutes from "./schedule.routes";
+import customPagesRoutes from "./customPages.routes";
+import calendarLegendRoutes from "./calendarLegend.routes";
 
 const router = Router();
 
@@ -32,5 +34,7 @@ router.use("/search", searchRoutes);
 router.use("/sync", syncRoutes);
 router.use("/link-preview", linkPreviewRoutes);
 router.use("/schedule", scheduleRoutes);
+router.use("/custom-pages", customPagesRoutes);
+router.use("/calendar-legend", calendarLegendRoutes);
 
 export default router;

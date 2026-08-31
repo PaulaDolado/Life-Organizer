@@ -2,30 +2,45 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { Habit } from "../types";
 
-const STRIP_DAYS = 7; // un círculo por cada día de la semana
+const STRIP_DAYS = 7; // un punto por cada día de la semana, lunes a domingo
+const DAY_LETTERS = ["L", "M", "X", "J", "V", "S", "D"];
 
-function lastDates(count: number): string[] {
-  const dates: string[] = [];
-  const cursor = new Date();
-  for (let i = count - 1; i >= 0; i--) {
-    const d = new Date(cursor);
-    d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().slice(0, 10));
-  }
-  return dates;
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Fechas (lunes a domingo) de la semana en curso — a propósito NO es una ventana deslizante de
+// "últimos 7 días" (donde hoy siempre cae en la última posición): así cada punto tiene una
+// posición FIJA según el día de la semana (lunes = 1er punto ... domingo = 7º), y marcar un
+// hábito desde "Hoy" siempre rellena el punto que le toca a ese día (ver toggleHabitToday en
+// HoyPage, que marca la fecha de hoy — aquí solo cambia dónde se pinta esa marca).
+// Al empezar una semana nueva, estas fechas cambian solas y los 7 puntos vuelven a aparecer sin
+// marcar (no hay registros para las fechas nuevas todavía) — sin tocar la racha, que se calcula
+// aparte a partir de TODO el historial de HabitLog (ver streak en habitsService.listHabits), así
+// que no se pierde por este reinicio visual de la semana.
+function currentWeekDates(): string[] {
+  const today = new Date();
+  const isoWeekday = (today.getDay() + 6) % 7; // 0 = lunes ... 6 = domingo (getDay() da 0 = domingo)
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - isoWeekday);
+  return Array.from({ length: STRIP_DAYS }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
 }
 
 /**
  * Seguimiento de hábitos diarios, junto a "Progreso de objetivos" en la Agenda: a diferencia de
  * un objetivo (un número hacia una meta con fecha de fin), un hábito no se "completa" — se marca
- * o no cada día, y lo que importa es la racha. Cada hábito muestra una tira tipo mapa de calor de
- * los últimos 14 días, clicable para marcar/desmarcar cualquiera de esos días (no solo hoy).
+ * o no cada día, y lo que importa es la racha. Cada hábito muestra los 7 días de la semana en
+ * curso (lunes a domingo), clicable para marcar/desmarcar cualquiera de esos días (no solo hoy).
  */
 export function HabitsTrackerCard({ habits, onChanged }: { habits: Habit[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const days = lastDates(STRIP_DAYS);
+  const days = currentWeekDates();
 
   const toggleDay = async (habitId: number, date: string) => {
     await api.post(`/habits/${habitId}/toggle`, { date });
@@ -164,19 +179,30 @@ function HabitColumn({
           ✕
         </button>
       </div>
-      {habit.streak > 0 && <p className="mb-1.5 text-xs font-medium text-habit">{habit.streak} días</p>}
       <div className="flex gap-1">
-        {days.map((date) => {
+        {days.map((date, i) => {
           const isCompleted = completed.has(date);
+          const isToday = date === todayKey();
           return (
-            <button
-              key={date}
-              onClick={() => onToggleDay(habit.id, date)}
-              aria-label={`${date}${isCompleted ? " (marcado)" : ""}`}
-              className={`size-3.5 shrink-0 rounded-full transition-colors ${
-                isCompleted ? "bg-habit" : "bg-habit/15 hover:bg-habit/30"
-              }`}
-            />
+            <div key={date} className="flex flex-col items-center gap-1">
+              <span className={`text-[9px] leading-none ${isToday ? "font-bold text-habit" : "text-muted-foreground"}`}>
+                {DAY_LETTERS[i]}
+              </span>
+              <button
+                onClick={() => onToggleDay(habit.id, date)}
+                title={isToday ? "Hoy" : undefined}
+                aria-label={`${DAY_LETTERS[i]}${isToday ? " (hoy)" : ""}${isCompleted ? " (marcado)" : ""}`}
+                // El anillo de "hoy" va hacia DENTRO (ring-inset), no hacia fuera con offset: la
+                // fila vive en un <ul overflow-x-auto> (ver más abajo) y, por la propia regla de
+                // CSS de overflow, eso fuerza a que el overflow vertical también se recorte — un
+                // anillo con offset hacia fuera se salía unos px del círculo y se cortaba (se
+                // veía como un trocito de línea en vez de un anillo completo). Hacia dentro nunca
+                // sale de la caja del propio botón, así no hay nada que recortar.
+                className={`size-3.5 shrink-0 rounded-full transition-colors ${
+                  isCompleted ? "bg-habit" : "bg-habit/15 hover:bg-habit/30"
+                } ${isToday ? "ring-2 ring-inset ring-habit" : ""}`}
+              />
+            </div>
           );
         })}
       </div>

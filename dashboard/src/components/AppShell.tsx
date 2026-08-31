@@ -1,11 +1,36 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useFetch } from "../hooks/useFetch";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { ProfileDialog } from "./ProfileDialog";
-import { AgendaResponse, Notification, SearchResults } from "../types";
+import { AgendaResponse, CustomPageSummary, CustomPageTemplate, Notification, SearchResults } from "../types";
+import { CUSTOM_PAGE_TEMPLATES } from "../utils/customPageTemplates";
 
-export type Tab = "hoy" | "agenda" | "planificador" | "horario" | "metas" | "finanzas" | "finanzas-ahorro" | "proyectos" | "hobbies";
+export type StaticTab =
+  | "hoy"
+  | "agenda"
+  | "planificador"
+  | "horario"
+  | "metas"
+  | "finanzas"
+  | "finanzas-ahorro"
+  | "proyectos"
+  | "hobbies";
+// Pestaña de una página personalizada ("+ Nueva página", ver CreatePageModal más abajo) —
+// codifica el id directamente en el string en vez de llevar un id de pestaña + un id de página
+// por separado, así activeTab (un simple useState en DashboardPage) sigue siendo la única fuente
+// de verdad de "qué se ve ahora mismo", igual que con las pestañas estáticas.
+export type CustomTabId = `custom-${number}`;
+export type Tab = StaticTab | CustomTabId;
+
+export function customPageTab(id: number): CustomTabId {
+  return `custom-${id}`;
+}
+
+export function parseCustomPageTab(tab: Tab): number | null {
+  const match = /^custom-(\d+)$/.exec(tab);
+  return match ? Number(match[1]) : null;
+}
 
 // A dónde navegar y qué destacar al hacer clic en un resultado de búsqueda global — cada página
 // destino decide qué hacer con `id` (abrir el diálogo, expandir la tarjeta, etc.) y llama a
@@ -53,6 +78,13 @@ interface AppShellProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   onSearchNavigate: (tab: Tab, focus: SearchFocus) => void;
+  // Páginas personalizadas del usuario y sus acciones — ver DashboardPage, que es quien las
+  // carga (una sola vez, GET /custom-pages) y las mantiene en sync tanto para el menú de aquí
+  // como para saber qué plantilla renderizar cuando activeTab es una de ellas.
+  customPages: CustomPageSummary[];
+  onCreateCustomPage: (title: string, template: CustomPageTemplate) => Promise<void>;
+  onRenameCustomPage: (id: number, title: string) => Promise<void>;
+  onDeleteCustomPage: (id: number) => Promise<void>;
   children: ReactNode;
 }
 
@@ -63,9 +95,22 @@ const MAX_SIDEBAR_WIDTH = 480;
 // Padding horizontal del <aside> (p-8 = 2rem por lado) que hay que sumar al ancho del texto.
 const SIDEBAR_PADDING_X = 64;
 
-export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }: AppShellProps) {
+export function AppShell({
+  activeTab,
+  onTabChange,
+  onSearchNavigate,
+  customPages,
+  onCreateCustomPage,
+  onRenameCustomPage,
+  onDeleteCustomPage,
+  children,
+}: AppShellProps) {
   const { user, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showCreatePage, setShowCreatePage] = useState(false);
+  const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [confirmingDeletePageId, setConfirmingDeletePageId] = useState<number | null>(null);
   const { data: week } = useFetch(() => api.get<AgendaResponse>(`/agenda/week/${todayIso()}`), []);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -202,6 +247,91 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
                 ))}
               </nav>
 
+              <div className="flex flex-col gap-1">
+                {customPages.length > 0 && (
+                  <p className="px-3 pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">Tus páginas</p>
+                )}
+                {customPages.map((page) => {
+                  const tab = customPageTab(page.id);
+                  const isRenaming = renamingPageId === page.id;
+                  return (
+                    <div key={page.id} className="group relative">
+                      {isRenaming ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={async () => {
+                            const trimmed = renameValue.trim();
+                            setRenamingPageId(null);
+                            if (trimmed && trimmed !== page.title) await onRenameCustomPage(page.id, trimmed);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            if (e.key === "Escape") setRenamingPageId(null);
+                          }}
+                          className="w-full rounded-lg border border-primary bg-background px-3 py-2 text-left text-sm outline-none"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => onTabChange(tab)}
+                          className={`w-full truncate rounded-lg px-3 py-2 pr-14 text-left transition-colors ${
+                            activeTab === tab ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-foreground/5"
+                          }`}
+                        >
+                          {page.title}
+                        </button>
+                      )}
+                      {!isRenaming && (
+                        <span className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            type="button"
+                            title="Renombrar página"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenamingPageId(page.id);
+                              setRenameValue(page.title);
+                            }}
+                            className="cursor-pointer rounded p-1.5 text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            title={confirmingDeletePageId === page.id ? "Confirmar eliminar" : "Eliminar página"}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (confirmingDeletePageId === page.id) {
+                                setConfirmingDeletePageId(null);
+                                await onDeleteCustomPage(page.id);
+                              } else {
+                                setConfirmingDeletePageId(page.id);
+                              }
+                            }}
+                            onMouseLeave={() => setConfirmingDeletePageId((id) => (id === page.id ? null : id))}
+                            className={`cursor-pointer rounded p-1.5 text-xs ${
+                              confirmingDeletePageId === page.id ? "font-bold text-destructive" : "text-muted-foreground hover:text-destructive"
+                            }`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Translúcido a propósito (border punteado + fondo primary/5) para distinguirlo
+                    del resto del menú, que son botones sólidos u opacos — es una acción de "crear
+                    algo nuevo", no una pestaña ya existente. */}
+                <button
+                  onClick={() => setShowCreatePage(true)}
+                  className="w-full cursor-pointer truncate rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-left text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  + Nueva página
+                </button>
+              </div>
+
               <div className="mt-auto space-y-4">
                 <NotificationsWidget />
 
@@ -286,6 +416,26 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
               {item.label}
             </button>
           ))}
+          {customPages.map((page) => {
+            const tab = customPageTab(page.id);
+            return (
+              <button
+                key={page.id}
+                onClick={() => onTabChange(tab)}
+                className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm ${
+                  activeTab === tab ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"
+                }`}
+              >
+                {page.title}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setShowCreatePage(true)}
+            className="whitespace-nowrap rounded-lg border border-dashed border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary"
+          >
+            + Nueva página
+          </button>
           <button onClick={logout} className="ml-auto whitespace-nowrap rounded-lg px-3 py-2 text-sm text-muted-foreground">
             Salir
           </button>
@@ -294,6 +444,15 @@ export function AppShell({ activeTab, onTabChange, onSearchNavigate, children }:
       </div>
 
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
+      {showCreatePage && (
+        <CreatePageModal
+          onClose={() => setShowCreatePage(false)}
+          onCreate={async (title, template) => {
+            await onCreateCustomPage(title, template);
+            setShowCreatePage(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -505,5 +664,107 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
       </div>
       {action}
     </header>
+  );
+}
+
+/**
+ * Diálogo de "+ Nueva página": elegir un modelo (ver CUSTOM_PAGE_TEMPLATES) y ponerle nombre.
+ * El nombre se autorrellena con la etiqueta del modelo elegido en cuanto se toca uno (y solo si
+ * el usuario no ha escrito ya el suyo), pero sigue siendo editable — así "modificar el nombre de
+ * la página a crear" no exige borrar nada si el modelo ya sugiere un buen nombre.
+ */
+function CreatePageModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (title: string, template: CustomPageTemplate) => Promise<void>;
+}) {
+  const [template, setTemplate] = useState<CustomPageTemplate | null>(null);
+  const [title, setTitle] = useState("");
+  const [titleTouched, setTitleTouched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pickTemplate = (key: CustomPageTemplate, label: string) => {
+    setTemplate(key);
+    if (!titleTouched) setTitle(label);
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = title.trim();
+    if (!template || !trimmed) return;
+    setCreating(true);
+    setError(null);
+    try {
+      await onCreate(trimmed, template);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No se pudo crear la página.");
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-foreground/50 p-4"
+      onClick={onClose}
+    >
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="font-serif text-xl">Nueva página</h2>
+          <button type="button" onClick={onClose} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            ✕ Cerrar
+          </button>
+        </div>
+
+        <form onSubmit={submit}>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Elige un modelo</p>
+          <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {CUSTOM_PAGE_TEMPLATES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => pickTemplate(t.key, t.label)}
+                className={`cursor-pointer rounded-2xl border p-3 text-left transition-colors ${
+                  template === t.key ? "border-primary bg-primary/10" : "border-border hover:border-primary/30"
+                }`}
+              >
+                <span className="text-xl" aria-hidden="true">
+                  {t.icon}
+                </span>
+                <p className="mt-1 text-sm font-medium">{t.label}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t.description}</p>
+              </button>
+            ))}
+          </div>
+
+          <label className="mb-1 flex flex-col gap-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Nombre de la página
+            <input
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setTitleTouched(true);
+              }}
+              placeholder="Ponle un nombre..."
+              maxLength={100}
+              required
+              className="field-input normal-case tracking-normal"
+            />
+          </label>
+
+          {error && (
+            <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">⚠️ {error}</p>
+          )}
+
+          <button type="submit" disabled={!template || !title.trim() || creating} className="btn-primary mt-4">
+            {creating ? "Creando..." : "Crear página"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

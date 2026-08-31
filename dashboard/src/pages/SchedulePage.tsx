@@ -1,9 +1,52 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { PageHeader } from "../components/AppShell";
 import { api, ApiError } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage } from "../components/Feedback";
-import { ScheduleRow } from "../types";
+import { AnnualCalendarLegend } from "../components/AnnualCalendarLegend";
+import { Schedule, ScheduleRow } from "../types";
+
+// Celda de texto del horario: un <textarea> en vez de <input> — así Enter inserta un salto de
+// línea (asignatura en una línea, aula en la siguiente...) en vez de no hacer nada. Se
+// autoajusta la altura al contenido (rows=1 + crecer con scrollHeight) tanto al escribir como al
+// cargar un valor ya multilínea; como las celdas están dentro de una <tr>, la fila entera crece
+// con ellas sin necesidad de tocar nada más.
+function ScheduleCell({
+  value,
+  placeholder,
+  className,
+  onChange,
+  onBlur,
+}: {
+  value: string;
+  placeholder?: string;
+  className: string;
+  onChange: (value: string) => void;
+  onBlur: (value: string) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const autoGrow = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    if (ref.current) autoGrow(ref.current);
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={(e) => onBlur(e.target.value)}
+      className={`w-full resize-none overflow-hidden rounded-none bg-transparent outline-none ${className}`}
+    />
+  );
+}
 
 type DayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday";
 const DAYS: { key: DayKey; label: string }[] = [
@@ -14,15 +57,221 @@ const DAYS: { key: DayKey; label: string }[] = [
   { key: "friday", label: "Viernes" },
 ];
 
-// Horario semanal fijo de texto libre (típicamente de universidad): una tabla lunes-viernes
-// donde cada celda es una franja horaria en blanco para que el usuario escriba lo que quiera
-// (asignatura, aula...) — sin fechas ni estructura forzada, a diferencia de los eventos de
-// Agenda. El backend (ver API.md > Horario) guarda cada fila con `order` para poder
-// reordenarlas, y cada celda es una columna de texto suelta (monday/tuesday/...).
+const VIEW_MODE_KEY = "life-organizer:schedule-view-mode";
+type ViewMode = "flechas" | "apilado";
+
+/**
+ * Horario semanal fijo de texto libre (típicamente de universidad): el usuario puede tener
+ * varios horarios con nombre propio (uno por trimestre/semestre, ver Schedule) y elegir verlos
+ * de uno en uno con flechas (por defecto) o todos apilados. Cada uno es una tabla lunes-viernes
+ * donde cada celda es una franja horaria en blanco para escribir lo que se quiera (asignatura,
+ * aula...) — sin fechas ni estructura forzada, a diferencia de los eventos de Agenda. Debajo de
+ * los horarios, un calendario anual con leyenda (ver AnnualCalendarLegend) para marcar
+ * vacaciones, evaluaciones, festivos...
+ */
 export function SchedulePage() {
-  const { data, loading, error, reload } = useFetch(() => api.get<{ rows: ScheduleRow[] }>("/schedule"), []);
+  const { data, loading, error, reload } = useFetch(() => api.get<{ schedules: Schedule[] }>("/schedule"), []);
+  const schedules = data?.schedules ?? [];
+
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || "flechas");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  // Id del horario recién creado al que hay que saltar en cuanto `reload()` lo traiga a
+  // `schedules` — no se puede hacer `setActiveIndex(schedules.length)` directamente después de
+  // llamar a `reload()`: ese `reload()` es asíncrono, así que por un instante `schedules` seguiría
+  // reflejando la lista VIEJA (una de menos) con `activeIndex` ya apuntando fuera de rango, y el
+  // efecto de abajo lo recortaría de vuelta a 0 antes de que llegaran los datos nuevos.
+  const [pendingFocusId, setPendingFocusId] = useState<number | null>(null);
+
+  // Si se borra el horario activo (o cambia el total), el índice de las flechas no debe quedar
+  // apuntando fuera de rango.
+  useEffect(() => {
+    if (activeIndex > schedules.length - 1) setActiveIndex(Math.max(0, schedules.length - 1));
+  }, [schedules.length, activeIndex]);
+
+  // En cuanto el horario recién creado aparece en `schedules` (tras el reload), salta a él.
+  useEffect(() => {
+    if (pendingFocusId === null) return;
+    const index = schedules.findIndex((s) => s.id === pendingFocusId);
+    if (index !== -1) {
+      setActiveIndex(index);
+      setPendingFocusId(null);
+    }
+  }, [schedules, pendingFocusId]);
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem(VIEW_MODE_KEY, mode);
+  };
+
+  const createSchedule = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const created = await api.post<Schedule>("/schedule", { name: trimmed });
+    setNewName("");
+    setShowCreate(false);
+    setPendingFocusId(created.id);
+    reload();
+  };
+
+  const renameSchedule = async (id: number, name: string) => {
+    await api.put(`/schedule/${id}`, { name });
+    reload();
+  };
+
+  const deleteSchedule = async (id: number) => {
+    await api.delete(`/schedule/${id}`);
+    reload();
+  };
+
+  const moveSchedule = async (id: number, direction: "up" | "down") => {
+    await api.put(`/schedule/${id}/move`, { direction });
+    reload();
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="Horario"
+        subtitle="Tu horario semanal fijo — universidad, clases, lo que sea"
+        action={
+          <div className="flex items-center gap-1 rounded-full border border-border p-1 text-xs">
+            <button
+              onClick={() => changeViewMode("flechas")}
+              className={`cursor-pointer rounded-full px-3 py-1.5 transition-colors ${
+                viewMode === "flechas" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Flechas
+            </button>
+            <button
+              onClick={() => changeViewMode("apilado")}
+              className={`cursor-pointer rounded-full px-3 py-1.5 transition-colors ${
+                viewMode === "apilado" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Apilado
+            </button>
+          </div>
+        }
+      />
+
+      {error && <ErrorMessage message={error} />}
+
+      {loading ? (
+        <Loading label="Cargando horario..." />
+      ) : schedules.length === 0 && !showCreate ? (
+        <div className="rounded-3xl border border-dashed border-border p-10 text-center">
+          <p className="mb-4 text-sm text-muted-foreground">
+            Todavía no tienes ningún horario. Crea el primero (p.ej. "1r trimestre" o "Semestre 1").
+          </p>
+          <button onClick={() => setShowCreate(true)} className="btn-primary">
+            + Nuevo horario
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-10">
+          {viewMode === "flechas" && schedules.length > 0 && (
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => setActiveIndex((i) => Math.max(0, i - 1))}
+                disabled={activeIndex === 0}
+                className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                ‹
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Horario {activeIndex + 1} de {schedules.length}
+              </span>
+              <button
+                onClick={() => setActiveIndex((i) => Math.min(schedules.length - 1, i + 1))}
+                disabled={activeIndex === schedules.length - 1}
+                className="cursor-pointer rounded-full border border-border px-3 py-1.5 text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                ›
+              </button>
+            </div>
+          )}
+
+          {(viewMode === "apilado" ? schedules : schedules.slice(activeIndex, activeIndex + 1)).map((schedule) => {
+            const index = schedules.findIndex((s) => s.id === schedule.id);
+            return (
+              <ScheduleTable
+                key={schedule.id}
+                schedule={schedule}
+                canMoveUp={index > 0}
+                canMoveDown={index < schedules.length - 1}
+                onRename={(name) => renameSchedule(schedule.id, name)}
+                onDelete={() => deleteSchedule(schedule.id)}
+                onMoveUp={() => moveSchedule(schedule.id, "up")}
+                onMoveDown={() => moveSchedule(schedule.id, "down")}
+              />
+            );
+          })}
+
+          {showCreate ? (
+            <form onSubmit={createSchedule} className="flex max-w-sm gap-2 rounded-2xl border border-dashed border-border p-3">
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder='Nombre, p.ej. "2n trimestre"'
+                className="field-input flex-1 text-sm"
+              />
+              <button type="submit" className="btn-dark shrink-0 px-3 py-2 text-xs">
+                Crear
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="shrink-0 cursor-pointer px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="w-full max-w-sm cursor-pointer rounded-full border border-dashed border-primary/30 bg-primary/5 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              + Nuevo horario
+            </button>
+          )}
+        </div>
+      )}
+
+      <AnnualCalendarLegend />
+    </>
+  );
+}
+
+function ScheduleTable({
+  schedule,
+  canMoveUp,
+  canMoveDown,
+  onRename,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  schedule: Schedule;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const { data, loading, error, reload } = useFetch(
+    () => api.get<{ rows: ScheduleRow[] }>(`/schedule/${schedule.id}/rows`),
+    [schedule.id]
+  );
   const [rows, setRows] = useState<ScheduleRow[]>([]);
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+  const [name, setName] = useState(schedule.name);
+  const [confirmingDeleteRowId, setConfirmingDeleteRowId] = useState<number | null>(null);
+  const [confirmingDeleteSchedule, setConfirmingDeleteSchedule] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Copia local editable — igual que el patrón ya usado en RichTextEditor/ProyectosPage: se
@@ -32,13 +281,17 @@ export function SchedulePage() {
     if (data) setRows(data.rows);
   }, [data]);
 
+  useEffect(() => {
+    setName(schedule.name);
+  }, [schedule.name]);
+
   const updateLocal = (id: number, patch: Partial<ScheduleRow>) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
   const persist = async (id: number, patch: Record<string, string>) => {
     try {
-      await api.put(`/schedule/${id}`, patch);
+      await api.put(`/schedule/${schedule.id}/rows/${id}`, patch);
       setSaveError(null);
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "No se pudo guardar el cambio.");
@@ -46,37 +299,93 @@ export function SchedulePage() {
   };
 
   const addRow = async () => {
-    await api.post("/schedule", {});
+    await api.post(`/schedule/${schedule.id}/rows`, {});
     reload();
   };
 
   const removeRow = async (id: number) => {
-    await api.delete(`/schedule/${id}`);
-    setConfirmingDeleteId(null);
+    await api.delete(`/schedule/${schedule.id}/rows/${id}`);
+    setConfirmingDeleteRowId(null);
     reload();
   };
 
   // Igual que en Proyectos/Apuntes rápidos: primer click pide confirmación, segundo click (en
   // el mismo botón) borra de verdad; alejar el ratón cancela la confirmación pendiente.
-  const handleDeleteClick = (id: number) => {
-    if (confirmingDeleteId === id) removeRow(id);
-    else setConfirmingDeleteId(id);
+  const handleDeleteRowClick = (id: number) => {
+    if (confirmingDeleteRowId === id) removeRow(id);
+    else setConfirmingDeleteRowId(id);
   };
 
-  const move = async (id: number, direction: "up" | "down") => {
-    await api.put(`/schedule/${id}/move`, { direction });
+  const moveRow = async (id: number, direction: "up" | "down") => {
+    await api.put(`/schedule/${schedule.id}/rows/${id}/move`, { direction });
     reload();
   };
 
-  return (
-    <>
-      <PageHeader title="Horario" subtitle="Tu horario semanal fijo — universidad, clases, lo que sea" />
+  const saveName = () => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === schedule.name) {
+      setName(schedule.name);
+      return;
+    }
+    onRename(trimmed);
+  };
 
-      {error && <ErrorMessage message={error} />}
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={saveName}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          title="Haz clic para renombrar este horario"
+          className="min-w-0 flex-1 border-b border-transparent bg-transparent font-serif text-xl outline-none focus:border-primary"
+        />
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            title="Subir"
+            className="cursor-pointer rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ↑
+          </button>
+          <button
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            title="Bajar"
+            className="cursor-pointer rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ↓
+          </button>
+          <button
+            onClick={() => {
+              if (!confirmingDeleteSchedule) {
+                setConfirmingDeleteSchedule(true);
+                return;
+              }
+              onDelete();
+            }}
+            onBlur={() => setConfirmingDeleteSchedule(false)}
+            className={`cursor-pointer whitespace-nowrap rounded-full px-3 py-1 text-xs transition-colors ${
+              confirmingDeleteSchedule
+                ? "bg-destructive text-destructive-foreground"
+                : "border border-border text-muted-foreground hover:text-destructive"
+            }`}
+          >
+            {confirmingDeleteSchedule ? "¿Confirmar?" : "Eliminar horario"}
+          </button>
+        </div>
+      </div>
+
       {saveError && <ErrorMessage message={saveError} />}
 
       {loading ? (
         <Loading label="Cargando horario..." />
+      ) : error ? (
+        <ErrorMessage message={error} />
       ) : (
         <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-soft)]">
           <div className="overflow-x-auto">
@@ -96,22 +405,22 @@ export function SchedulePage() {
                 {rows.map((row, i) => (
                   <tr key={row.id} className="group">
                     <td className="border-r border-border p-0 align-top">
-                      <input
+                      <ScheduleCell
                         value={row.timeLabel}
-                        onChange={(e) => updateLocal(row.id, { timeLabel: e.target.value })}
-                        onBlur={(e) => persist(row.id, { timeLabel: e.target.value })}
+                        onChange={(value) => updateLocal(row.id, { timeLabel: value })}
+                        onBlur={(value) => persist(row.id, { timeLabel: value })}
                         placeholder="08:00 - 10:00"
-                        className="w-full rounded-none bg-transparent px-3 py-2.5 text-xs font-medium text-muted-foreground outline-none focus:bg-muted/40"
+                        className="px-3 py-2.5 text-xs font-medium text-muted-foreground focus:bg-muted/40"
                       />
                     </td>
                     {DAYS.map((d) => (
                       <td key={d.key} className="border-r border-border p-0 align-top last-of-type:border-r-0">
-                        <input
+                        <ScheduleCell
                           value={row[d.key]}
-                          onChange={(e) => updateLocal(row.id, { [d.key]: e.target.value } as Partial<ScheduleRow>)}
-                          onBlur={(e) => persist(row.id, { [d.key]: e.target.value })}
+                          onChange={(value) => updateLocal(row.id, { [d.key]: value } as Partial<ScheduleRow>)}
+                          onBlur={(value) => persist(row.id, { [d.key]: value })}
                           placeholder="—"
-                          className="w-full bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/40 focus:bg-muted/40"
+                          className="py-2.5 px-3 text-sm placeholder:text-muted-foreground/40 focus:bg-muted/40"
                         />
                       </td>
                     ))}
@@ -119,7 +428,7 @@ export function SchedulePage() {
                       <div className="flex items-center justify-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           type="button"
-                          onClick={() => move(row.id, "up")}
+                          onClick={() => moveRow(row.id, "up")}
                           disabled={i === 0}
                           title="Subir"
                           className="cursor-pointer rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
@@ -128,7 +437,7 @@ export function SchedulePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => move(row.id, "down")}
+                          onClick={() => moveRow(row.id, "down")}
                           disabled={i === rows.length - 1}
                           title="Bajar"
                           className="cursor-pointer rounded px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
@@ -137,11 +446,13 @@ export function SchedulePage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteClick(row.id)}
-                          onMouseLeave={() => setConfirmingDeleteId((id) => (id === row.id ? null : id))}
-                          title={confirmingDeleteId === row.id ? "Confirmar eliminar" : "Eliminar franja"}
+                          onClick={() => handleDeleteRowClick(row.id)}
+                          onMouseLeave={() => setConfirmingDeleteRowId((id) => (id === row.id ? null : id))}
+                          title={confirmingDeleteRowId === row.id ? "Confirmar eliminar" : "Eliminar franja"}
                           className={`cursor-pointer rounded px-1.5 py-1 text-xs ${
-                            confirmingDeleteId === row.id ? "font-bold text-destructive opacity-100" : "text-muted-foreground hover:text-destructive"
+                            confirmingDeleteRowId === row.id
+                              ? "font-bold text-destructive opacity-100"
+                              : "text-muted-foreground hover:text-destructive"
                           }`}
                         >
                           ✕
@@ -169,6 +480,6 @@ export function SchedulePage() {
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }

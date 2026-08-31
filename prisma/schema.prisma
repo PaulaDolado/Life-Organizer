@@ -48,7 +48,10 @@ model User {
   habits        Habit[]
   habitLogs     HabitLog[]
   syncTombstones SyncTombstone[]
-  scheduleRows  ScheduleRow[]
+  schedules     Schedule[]
+  customPages   CustomPage[]
+  calendarLegendCategories CalendarLegendCategory[]
+  calendarDayMarks         CalendarDayMark[]
 
   @@index([emailVerificationTokenHash])
 }
@@ -406,24 +409,101 @@ model SyncTombstone {
   @@index([userId, deletedAt])
 }
 
-// Horario semanal fijo (p.ej. de universidad) — Agenda > Horario. Cada fila es un bloque
-// horario (una franja) con una celda de texto libre por día de lunes a viernes; a diferencia
-// de Event, no tiene fecha: es la misma plantilla semana tras semana, y el usuario rellena cada
-// celda a mano (no hay concepto de "asignatura" estructurado, solo texto libre por celda).
-model ScheduleRow {
+// Página personalizada creada desde "+ Nueva página" (menú lateral del dashboard): el usuario
+// elige un "modelo" al crearla (una libreta en blanco, un kanban, o una versión simplificada e
+// independiente de Finanzas/Proyectos/Objetivos/Agenda/Hoy) y le pone el nombre que quiera.
+// A diferencia de esas secciones "de verdad" (Project, Goal, Transaction...), aquí NO hay tabla
+// propia por tipo de contenido: `content` guarda el JSON con la forma que le corresponda a
+// `template` (columnas y tarjetas para kanban, HTML para nota, entradas para finanzas...) — el
+// dashboard sabe interpretarlo según `template`. Igual que ProjectPage.content, se sobrescribe
+// entero en cada guardado en vez de tener endpoints por sub-elemento.
+model CustomPage {
   id        Int      @id @default(autoincrement())
   userId    Int
+  title     String
+  // "nota" | "kanban" | "finanzas" | "proyectos" | "objetivos" | "agenda" | "hoy"
+  template  String
   order     Int      @default(0)
-  timeLabel String   @default("") // texto libre, p.ej. "08:00 - 10:00"
-  monday    String   @default("")
-  tuesday   String   @default("")
-  wednesday String   @default("")
-  thursday  String   @default("")
-  friday    String   @default("")
+  content   Json     @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, order])
+}
+
+// Un horario con nombre propio (p.ej. "1r trimestre", "2n semestre") — Agenda > Horario. El
+// usuario puede tener varios a la vez (uno por trimestre/semestre) y elegir verlos apilados o de
+// uno en uno con flechas (ver SchedulePage en el dashboard); `order` es el orden entre ellos.
+model Schedule {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rows ScheduleRow[]
+
+  @@index([userId, order])
+}
+
+// Fila de un Schedule: un bloque horario (una franja) con una celda de texto libre por día de
+// lunes a viernes; a diferencia de Event, no tiene fecha: es la misma plantilla semana tras
+// semana, y el usuario rellena cada celda a mano (no hay concepto de "asignatura" estructurado,
+// solo texto libre por celda).
+model ScheduleRow {
+  id         Int      @id @default(autoincrement())
+  scheduleId Int
+  order      Int      @default(0)
+  timeLabel  String   @default("") // texto libre, p.ej. "08:00 - 10:00"
+  monday     String   @default("")
+  tuesday    String   @default("")
+  wednesday  String   @default("")
+  thursday   String   @default("")
+  friday     String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId, order])
+}
+
+// Categoría de la leyenda del calendario anual (Horario > vista anual, ver AnnualCalendarLegend
+// en el dashboard) — nombre + color elegido de la paleta de la propia app (ver CALENDAR_COLORS
+// en el dashboard). Una única leyenda compartida para toda la cuenta, independiente de cuántos
+// Schedule tenga el usuario — el calendario anual no pertenece a ningún trimestre en concreto.
+model CalendarLegendCategory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  label     String
+  color     String // clave de la paleta de la app: "primary" | "secondary" | "habit" | "hobby" | "positive" | "negative" | "warning" | "muted"
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days CalendarDayMark[]
+
+  @@index([userId, order])
+}
+
+// Un día del calendario anual pintado con una categoría de la leyenda. Un día por fila (no un
+// rango startDate..endDate): pintar varios días seguidos es simplemente crear varias filas desde
+// el dashboard (arrastrando sobre el calendario) — así borrar o repintar un solo día del medio de
+// un tramo largo no obliga a partir un rango en dos.
+model CalendarDayMark {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  categoryId Int
+  date       DateTime @db.Date
+
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category CalendarLegendCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([categoryId])
 }
