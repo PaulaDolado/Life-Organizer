@@ -353,6 +353,9 @@ export type CustomPageTemplate = "nota" | "kanban" | "finanzas" | "proyectos" | 
 export interface CustomPageSummary {
   id: number;
   title: string;
+  // Línea editable bajo el título (ver CustomPagePage) — null si el usuario no ha escrito una,
+  // en cuyo caso se muestra el icono+nombre de la plantilla como valor por defecto.
+  subtitle: string | null;
   template: CustomPageTemplate;
   order: number;
   createdAt: string;

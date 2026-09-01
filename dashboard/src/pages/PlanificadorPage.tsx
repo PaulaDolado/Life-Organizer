@@ -414,9 +414,9 @@ function PlannerBoard({
   const updateCustomField = (taskId: number, fieldId: number, value: CustomFieldValue) =>
     updateTask(taskId, { customFields: { [String(fieldId)]: value } });
 
-  // Crear una columna personalizada nueva — llamado tanto desde "+ Columna" en la cabecera del
-  // tablero (PlannerFieldsDialog) como desde el propio "+ Añadir columna" dentro de cada tarea
-  // (ver TaskDetailDialog): mismo destino, /planner/boards/:id/fields.
+  // Crear una propiedad personalizada nueva — llamado tanto desde "+ Propiedad" en la cabecera
+  // del tablero (PlannerFieldsDialog) como desde el propio "+ Añadir propiedad" dentro de cada
+  // tarea (ver TaskDetailDialog): mismo destino, /planner/boards/:id/fields.
   const addField = async (name: string, type: CustomFieldType, options?: string[]) => {
     await api.post(`/planner/boards/${planner.id}/fields`, { name, type, options });
     reloadFields();
@@ -469,10 +469,10 @@ function PlannerBoard({
         <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={() => setManagingFields(true)}
-            title="Columnas personalizadas"
+            title="Propiedades personalizadas"
             className="cursor-pointer whitespace-nowrap rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
           >
-            + Columna
+            + Propiedad
           </button>
           <button
             onClick={onMoveUp}
@@ -546,6 +546,7 @@ function PlannerBoard({
               onCyclePriority={cyclePriority}
               onDelete={removeTask}
               onUpdate={updateTask}
+              onAddField={addField}
               onLogTime={logTime}
               onAddSubtask={addSubtask}
               onToggleSubtask={toggleSubtask}
@@ -565,6 +566,7 @@ function PlannerBoard({
           onDelete={removeTask}
           onUpdate={updateTask}
           onUpdateCustomField={updateCustomField}
+          onAddField={addField}
           onLogTime={logTime}
           onAddSubtask={addSubtask}
           onToggleSubtask={toggleSubtask}
@@ -577,10 +579,10 @@ function PlannerBoard({
 }
 
 /**
- * Gestión de las columnas personalizadas de UN planner (ver PlannerField en el backend): crear
+ * Gestión de las propiedades personalizadas de UN planner (ver PlannerField en el backend): crear
  * (nombre + tipo, y opciones si es "selección"), reordenar y borrar. El nombre editable de cada
  * fila guarda al perder el foco, mismo patrón que el resto de renombrados de la app — cambiar el
- * TIPO de una columna ya creada no está soportado (ver comentario en plannerService.updateField):
+ * TIPO de una propiedad ya creada no está soportado (ver comentario en plannerService.updateField):
  * hay que borrarla y crear una nueva si hace falta otro tipo.
  */
 function PlannerFieldsDialog({
@@ -617,12 +619,12 @@ function PlannerFieldsDialog({
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)]">
         <div className="mb-1 flex items-center justify-between gap-4">
-          <h3 className="font-serif text-xl">Columnas personalizadas</h3>
+          <h3 className="font-serif text-xl">Propiedades personalizadas</h3>
           <button type="button" onClick={onClose} className="shrink-0 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
             ✕ Cerrar
           </button>
         </div>
-        <p className="mb-4 text-xs text-muted-foreground">Añade tus propias columnas a este planificador: texto, número, fecha o selección.</p>
+        <p className="mb-4 text-xs text-muted-foreground">Añade tus propias propiedades a este planificador: texto, número, fecha o selección.</p>
 
         {fields.length > 0 && (
           <ul className="mb-4 max-h-60 space-y-1 overflow-y-auto">
@@ -653,10 +655,10 @@ function PlannerFieldsDialog({
   );
 }
 
-// Formulario compacto para crear una columna personalizada nueva — se usa tanto en
+// Formulario compacto para crear una propiedad personalizada nueva — se usa tanto en
 // PlannerFieldsDialog (la vista de gestión completa) como dentro de cada tarea (ver
 // InlineAddField/TaskDetailDialog), para no obligar a cerrar la tarea y volver a la cabecera solo
-// para añadir la columna que hace falta justo ahora.
+// para añadir la propiedad que hace falta justo ahora.
 function AddFieldForm({
   onAdd,
   className,
@@ -685,7 +687,7 @@ function AddFieldForm({
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
-        placeholder="Nombre de la columna"
+        placeholder="Nombre de la propiedad"
         className="field-input w-full text-sm"
       />
       <select value={type} onChange={(e) => setType(e.target.value as CustomFieldType)} className="field-input w-full text-xs">
@@ -704,15 +706,15 @@ function AddFieldForm({
         />
       )}
       <button type="submit" className="btn-dark w-full text-xs">
-        + Añadir columna
+        + Añadir propiedad
       </button>
     </form>
   );
 }
 
-// Disparador plegado de AddFieldForm — un simple "+ Añadir columna" que, al clicarlo, revela el
-// formulario. Vive dentro de cada tarea (ver TaskDetailDialog) para poder crear una columna nueva
-// sin salir de ahí.
+// Disparador plegado de AddFieldForm — un simple "+ Añadir propiedad" que, al clicarlo, revela el
+// formulario. Vive dentro de cada tarea (ver TaskDetailDialog) para poder crear una propiedad
+// nueva sin salir de ahí.
 function InlineAddField({ onAdd }: { onAdd: (name: string, type: CustomFieldType, options?: string[]) => void }) {
   const [adding, setAdding] = useState(false);
 
@@ -723,7 +725,7 @@ function InlineAddField({ onAdd }: { onAdd: (name: string, type: CustomFieldType
         onClick={() => setAdding(true)}
         className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
       >
-        + Añadir columna
+        + Añadir propiedad
       </button>
     );
   }
@@ -784,7 +786,7 @@ function FieldRow({
       <button onClick={onMoveDown} disabled={!canMoveDown} title="Bajar" className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30">
         ↓
       </button>
-      <button onClick={onRemove} title="Eliminar columna" className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-destructive">
+      <button onClick={onRemove} title="Eliminar propiedad" className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-destructive">
         ✕
       </button>
     </li>
@@ -889,6 +891,7 @@ function KanbanColumn({
             onCyclePriority={() => onCyclePriority(task)}
             onDelete={() => onDelete(task.id)}
             onUpdate={(fields) => onUpdate(task.id, fields)}
+            onAddField={onAddField}
             onLogTime={(minutes) => onLogTime(task.id, minutes)}
             onAddSubtask={(subtaskTitle) => onAddSubtask(task.id, subtaskTitle)}
             onToggleSubtask={(subtask) => onToggleSubtask(task.id, subtask)}
@@ -2065,11 +2068,11 @@ function TaskDetailDialog({
               </div>
             </div>
 
-            {/* Columnas personalizadas — una por cada PlannerField de este planner, más
-                "+ Añadir columna" para crear una nueva sin salir de la tarea (igual que
-                "+ Columna" en la cabecera del tablero, ver PlannerFieldsDialog). */}
+            {/* Propiedades personalizadas — una por cada PlannerField de este planner, más
+                "+ Añadir propiedad" para crear una nueva sin salir de la tarea (igual que
+                "+ Propiedad" en la cabecera del tablero, ver PlannerFieldsDialog). */}
             <div className="space-y-2">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Columnas personalizadas</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Propiedades personalizadas</p>
               {fields.map((field) => (
                 <label key={field.id} className="block text-xs text-muted-foreground">
                   {field.name}

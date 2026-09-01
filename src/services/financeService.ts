@@ -111,6 +111,17 @@ export async function listTransactions(userId: number, filters: ListTransactions
   };
 }
 
+// Para exportar (ver financeController.exportTransactions): TODAS las transacciones del rango,
+// sin el límite/paginación de listTransactions — un CSV de un mes o un año tiene que traerlas
+// enteras, no una página de 100. Orden ascendente (no descendente como el listado normal) porque
+// un export se lee de arriba abajo como iría pasando el año, no "lo más reciente primero".
+export async function exportTransactions(userId: number, from: string | Date, to: string | Date) {
+  return prisma.transaction.findMany({
+    where: { userId, date: { gte: new Date(from), lte: new Date(to) } },
+    orderBy: { date: "asc" },
+  });
+}
+
 interface TransactionInput {
   type: "income" | "expense";
   amount: number;

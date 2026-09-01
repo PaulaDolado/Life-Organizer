@@ -486,6 +486,10 @@ model CustomPage {
   id        Int      @id @default(autoincrement())
   userId    Int
   title     String
+  // Línea bajo el título en la cabecera (ver CustomPagePage) — libre, la escribe el usuario; si
+  // es null se muestra el icono+nombre de la plantilla como valor por defecto (ver meta.label en
+  // customPageTemplates.ts), sin que eso quede guardado como si lo hubiera escrito él.
+  subtitle  String?
   // "nota" | "kanban" | "finanzas" | "proyectos" | "objetivos" | "agenda" | "hoy"
   template  String
   order     Int      @default(0)

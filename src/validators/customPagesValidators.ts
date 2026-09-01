@@ -26,6 +26,9 @@ const CONTENT_BYTE_LIMIT = 8_000_000;
 // se sobrescribe entero en cada guardado, igual que ProjectPage.content.
 export const updateCustomPageSchema = Joi.object({
   title: Joi.string().min(1).max(100),
+  // Vacío/null borra el subtítulo escrito por el usuario y vuelve a mostrar el icono+nombre de
+  // la plantilla por defecto (ver CustomPagePage).
+  subtitle: Joi.string().max(150).allow(null, ""),
   content: Joi.object()
     .unknown(true)
     .custom((value, helpers) => {

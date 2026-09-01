@@ -25,6 +25,14 @@ export const listTransactionsQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(20),
 });
 
+// A diferencia de listTransactionsQuerySchema: `from`/`to` obligatorios (exportar "todo" sin
+// rango no tiene sentido) y sin paginación — un export tiene que traer TODAS las transacciones
+// del rango, no una página de 100 (ver financeService.exportTransactions).
+export const exportTransactionsQuerySchema = Joi.object({
+  from: Joi.date().iso().required(),
+  to: Joi.date().iso().required(),
+});
+
 export const createTransactionSchema = Joi.object({
   type: Joi.string()
     .valid(...TRANSACTION_TYPES)

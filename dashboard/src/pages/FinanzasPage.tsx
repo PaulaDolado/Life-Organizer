@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PageHeader } from "../components/AppShell";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage } from "../components/Feedback";
 import { MiniLineChart } from "../components/MiniLineChart";
+import { downloadCsv, transactionsToCsv } from "../utils/financeExport";
 import { FinanceAnalytics, MonthlyBalance, Pagination, SavingsGoal, Transaction } from "../types";
 
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -47,7 +48,7 @@ export function FinanzasPage() {
 
   return (
     <>
-      <PageHeader title="Finanzas" subtitle="Ingresos, gastos, balance, ahorro e inversión" />
+      <PageHeader title="Finanzas" subtitle="Ingresos, gastos, balance, ahorro e inversión" action={<FinanceExportMenu />} />
 
       <div className="grid gap-8 lg:grid-cols-12">
         <div className="space-y-8 lg:col-span-8">
@@ -170,6 +171,94 @@ export function FinanzasPage() {
   );
 }
 
+// Mismo patrón que ExportMenu (ProyectosPage) / IcsMenu (AgendaPage): un <details> desplegable
+// con "⬇ Exportar" — pero aquí, en vez de una lista fija de opciones, cada modo pide un dato
+// (el mes, o el año) antes de descargar, así que las dos secciones son mini-formularios en vez
+// de simples botones de menú.
+function FinanceExportMenu() {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [year, setYear] = useState(() => new Date().getFullYear());
+
+  const fetchTransactions = async (from: Date, to: Date) => {
+    const result = await api.get<{ transactions: Transaction[] }>(
+      `/finance/transactions/export?from=${from.toISOString()}&to=${to.toISOString()}`
+    );
+    return result.transactions;
+  };
+
+  const exportMonth = async () => {
+    const [y, m] = month.split("-").map(Number);
+    if (!y || !m) return;
+    setBusy(true);
+    try {
+      const from = new Date(y, m - 1, 1);
+      const to = new Date(y, m, 0, 23, 59, 59, 999);
+      const transactions = await fetchTransactions(from, to);
+      downloadCsv(transactionsToCsv(transactions), `finanzas-${month}.csv`);
+      if (detailsRef.current) detailsRef.current.open = false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportYear = async () => {
+    setBusy(true);
+    try {
+      const from = new Date(year, 0, 1);
+      const to = new Date(year, 11, 31, 23, 59, 59, 999);
+      const transactions = await fetchTransactions(from, to);
+      downloadCsv(transactionsToCsv(transactions, { includeMonth: true }), `finanzas-${year}.csv`);
+      if (detailsRef.current) detailsRef.current.open = false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <details ref={detailsRef} className="relative">
+      <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap rounded-full border border-border px-4 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground [&::-webkit-details-marker]:hidden">
+        ⬇ Exportar
+      </summary>
+      <div className="absolute right-0 z-10 mt-2 w-72 rounded-2xl border border-border bg-card p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Un mes</p>
+        <div className="mb-4 flex gap-2">
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="field-input min-w-0 flex-1 text-sm"
+          />
+          <button onClick={exportMonth} disabled={busy} className="btn-dark shrink-0 px-3 text-xs disabled:opacity-50">
+            Exportar
+          </button>
+        </div>
+
+        <p className="mb-1.5 border-t border-border pt-3 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Año completo (por mes)
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={2000}
+            max={2100}
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="field-input min-w-0 flex-1 text-sm"
+          />
+          <button onClick={exportYear} disabled={busy} className="btn-dark shrink-0 px-3 text-xs disabled:opacity-50">
+            Exportar
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -199,23 +288,26 @@ function NewMovementForm({ onSubmit }: { onSubmit: (input: NewMovementInput) => 
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState("");
   const [kind, setKind] = useState<"ingreso" | "gasto">("gasto");
-  const [category, setCategory] = useState("general");
+  // Vacío por defecto — sin categoría "general" implícita: el usuario tiene que escribir la
+  // suya, igual que ya es obligatorio en el backend (createTransactionSchema.category.required()).
+  const [category, setCategory] = useState("");
 
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault();
         const value = Number(amount);
-        if (!concept.trim() || !value) return;
+        if (!concept.trim() || !value || !category.trim()) return;
 
         await onSubmit({
           type: kind === "gasto" ? "expense" : "income",
           amount: value,
-          category: category.trim() || "general",
+          category: category.trim(),
           description: concept.trim(),
         });
         setConcept("");
         setAmount("");
+        setCategory("");
       }}
       className="grid gap-4 card-soft md:grid-cols-[2fr_1fr_1fr_1fr_auto]"
     >

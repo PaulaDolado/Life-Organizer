@@ -46,6 +46,9 @@ export function CustomPagePage({
   const { data: page, loading, error } = useFetch(() => api.get<CustomPage>(`/custom-pages/${pageId}`), [pageId]);
 
   const [title, setTitle] = useState("");
+  // Cadena vacía = "no ha escrito ninguno todavía", no "borrar el de la plantilla" — el
+  // placeholder del input (ver más abajo) es quien muestra icono+nombre por defecto en ese caso.
+  const [subtitle, setSubtitle] = useState("");
   const [content, setContent] = useState<CustomPageContentMap[CustomPageTemplate] | null>(null);
   const [savingState, setSavingState] = useState<"idle" | "saving" | "saved">("idle");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -54,11 +57,17 @@ export function CustomPagePage({
   const [kanbanView, setKanbanView] = useState<"kanban" | "table">("kanban");
   const [managingFields, setManagingFields] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Último subtítulo que se sabe guardado en el servidor — ver saveSubtitle: comparar contra
+  // esto (no contra `page.subtitle`, que no se vuelve a pedir tras cada guardado) es lo que evita
+  // que un segundo cambio se quede sin detectar por comparar contra un valor ya desactualizado.
+  const lastSavedSubtitleRef = useRef("");
 
   // Sincroniza el estado local editable en cuanto llega (o cambia) la página del servidor.
   useEffect(() => {
     if (page) {
       setTitle(page.title);
+      setSubtitle(page.subtitle ?? "");
+      lastSavedSubtitleRef.current = page.subtitle ?? "";
       setContent(page.content);
     }
   }, [page]);
@@ -99,6 +108,18 @@ export function CustomPagePage({
     onRenamed();
   };
 
+  // Mismo patrón que saveTitle: se guarda al perder el foco, no en cada tecla. A diferencia del
+  // título, aquí SÍ se admite vaciarlo — un subtítulo vacío es válido (vuelve a mostrar
+  // icono+nombre de la plantilla vía el placeholder del input) y se guarda como null. Ver
+  // `lastSavedSubtitleRef` más arriba para por qué la comparación NO es contra `page.subtitle`.
+  const saveSubtitle = async () => {
+    const trimmed = subtitle.trim();
+    if (!page) return;
+    if (trimmed === lastSavedSubtitleRef.current) return;
+    await api.put(`/custom-pages/${pageId}`, { subtitle: trimmed });
+    lastSavedSubtitleRef.current = trimmed;
+  };
+
   const removePage = async () => {
     await api.delete(`/custom-pages/${pageId}`);
     onDeleted();
@@ -123,11 +144,25 @@ export function CustomPagePage({
             }}
             className="w-full min-w-0 border-b border-transparent bg-transparent font-serif text-4xl outline-none focus:border-primary"
           />
-          <p className="mt-2 text-sm text-muted-foreground">
-            <span aria-hidden="true">{meta.icon}</span> {meta.label}
-            {savingState === "saving" && " · Guardando..."}
-            {savingState === "saved" && " · Guardado"}
-          </p>
+          <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+            <span aria-hidden="true" className="shrink-0">
+              {meta.icon}
+            </span>
+            {/* Vacío por defecto — el placeholder es quien muestra "Kanban"/"Nota"/etc., para no
+                confundir "el usuario escribió esto" con "es solo el nombre de la plantilla". */}
+            <input
+              value={subtitle}
+              onChange={(e) => setSubtitle(e.target.value)}
+              onBlur={saveSubtitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder={meta.label}
+              className="min-w-0 flex-1 border-b border-transparent bg-transparent text-sm text-muted-foreground outline-none focus:border-primary"
+            />
+            {savingState === "saving" && <span className="shrink-0">· Guardando...</span>}
+            {savingState === "saved" && <span className="shrink-0">· Guardado</span>}
+          </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-3">
           <button

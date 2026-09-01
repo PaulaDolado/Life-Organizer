@@ -43,6 +43,17 @@ export async function listTransactions(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+export async function exportTransactions(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const userId = req.userId as number;
+    const { from, to } = req.query as unknown as { from: string; to: string };
+    const transactions = await financeService.exportTransactions(userId, from, to);
+    res.json({ transactions });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function createTransaction(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = req.userId as number;

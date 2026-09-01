@@ -7,6 +7,7 @@ import {
   monthYearParamSchema,
   yearParamSchema,
   listTransactionsQuerySchema,
+  exportTransactionsQuerySchema,
   createTransactionSchema,
   updateTransactionSchema,
   createSavingsGoalSchema,
@@ -88,6 +89,31 @@ router.get(
   financeController.listTransactions
 );
 router.post("/transactions", validate(createTransactionSchema), financeController.createTransaction);
+
+/**
+ * @openapi
+ * /finance/transactions/export:
+ *   get:
+ *     tags: [Finance]
+ *     summary: Todas las transacciones de un rango de fechas, sin paginar (para exportar)
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         required: true
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200: { description: "{ transactions: [...] }, ordenadas por fecha ascendente" }
+ */
+router.get(
+  "/transactions/export",
+  validate(exportTransactionsQuerySchema, "query"),
+  financeController.exportTransactions
+);
 
 /**
  * @openapi
