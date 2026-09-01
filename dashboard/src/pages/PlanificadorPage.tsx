@@ -805,6 +805,7 @@ function KanbanColumn({
   onCyclePriority,
   onDelete,
   onUpdate,
+  onAddField,
   onLogTime,
   onAddSubtask,
   onToggleSubtask,
@@ -824,6 +825,7 @@ function KanbanColumn({
   onCyclePriority: (task: Task) => void;
   onDelete: (id: number) => void;
   onUpdate: (id: number, fields: TaskFields) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
   onLogTime: (id: number, minutes: number) => void;
   onAddSubtask: (taskId: number, title: string) => void;
   onToggleSubtask: (taskId: number, subtask: Subtask) => void;
@@ -1712,6 +1714,7 @@ function TaskCard({
           fields={fields}
           onClose={() => setDetailOpen(false)}
           onUpdate={onUpdate}
+          onAddField={onAddField}
           onDelete={() => {
             onDelete();
             setDetailOpen(false);
