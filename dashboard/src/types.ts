@@ -27,7 +27,7 @@ export interface AuthResponse {
   user: User;
 }
 
-export type EventType = "work" | "study" | "gym" | "meeting" | "free" | "evento" | "cita";
+export type EventType = "work" | "study" | "gym" | "meeting" | "free" | "evento" | "cita" | "cumpleanos" | "otro";
 export type RecurringPattern = "daily" | "weekly" | "biweekly" | "monthly";
 
 export interface Event {
@@ -129,8 +129,47 @@ export interface Subtask {
   completed: boolean;
 }
 
+// Columna personalizada definida por el usuario — mismo concepto en dos sitios (Planner y el
+// kanban de páginas personalizadas), por eso vive aquí compartido en vez de duplicado. `options`
+// solo se usa con type "select". El valor real de cada tarea/tarjeta para un field es un
+// `CustomFieldValue`, guardado en un mapa `{ [fieldId]: valor }`.
+export type CustomFieldType = "text" | "number" | "date" | "select";
+
+export interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: CustomFieldType;
+  options?: string[];
+}
+
+export type CustomFieldValue = string | number | null;
+export type CustomFieldValues = Record<string, CustomFieldValue>;
+
+// Tablero de planificador con nombre propio — el usuario puede tener varios (ver Planner en el
+// backend), mismo patrón que Schedule más abajo.
+export interface Planner {
+  id: number;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Columna personalizada de UN planner concreto (ver PlannerField en el backend) — a diferencia de
+// CustomFieldDef (id de tipo string, usado en el kanban de páginas personalizadas cuyo contenido
+// es JSON de cliente), aquí el id es un entero real de la base de datos.
+export interface PlannerField {
+  id: number;
+  plannerId: number;
+  name: string;
+  type: CustomFieldType;
+  options: string[];
+  order: number;
+}
+
 export interface Task {
   id: number;
+  plannerId: number;
   title: string;
   description: string | null;
   // Foto embebida como data URL (ver TaskDetailDialog en el dashboard).
@@ -146,6 +185,7 @@ export interface Task {
   actualMinutes: number;
   projectId: number | null;
   subtasks: Subtask[];
+  customFields: CustomFieldValues;
 }
 
 export type GoalStatus = "active" | "completed" | "expired" | "all";
@@ -291,7 +331,7 @@ export interface TodayResponse {
 export interface SearchResults {
   query: string;
   events: { id: number; title: string; startTime: string; isRecurring: boolean }[];
-  tasks: { id: number; title: string; status: TaskStatus }[];
+  tasks: { id: number; title: string; status: TaskStatus; plannerId: number }[];
   notes: { id: number; content: string }[];
   projects: { id: number; title: string; status: Project["status"] }[];
 }
@@ -333,6 +373,9 @@ export interface KanbanCard {
   // dashboard) — mismo campo/idea que Task.notes en el Planificador, pero aquí vive dentro del
   // propio JSON de CustomPage.content, igual que `image`.
   notes?: string | null;
+  // Valores de las columnas personalizadas del tablero (ver CustomPageContentMap["kanban"].fieldDefs
+  // más abajo), indexados por CustomFieldDef.id.
+  fields?: CustomFieldValues;
 }
 
 export interface KanbanColumn {
@@ -372,7 +415,9 @@ export interface AgendaNote {
 // del propio JSON: quien discrimina es el `template` de la página que lo contiene).
 export interface CustomPageContentMap {
   nota: { html: string };
-  kanban: { columns: KanbanColumn[] };
+  // `fieldDefs` es opcional (páginas creadas antes de esta función no lo tienen) — tratar como
+  // `?? []` al leerlo, ver KanbanTemplate.
+  kanban: { columns: KanbanColumn[]; fieldDefs?: CustomFieldDef[] };
   finanzas: { entries: FinanceEntry[] };
   proyectos: { items: ChecklistItem[] };
   objetivos: { goals: SimpleGoal[] };

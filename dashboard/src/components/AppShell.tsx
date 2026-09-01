@@ -41,6 +41,7 @@ export interface SearchFocus {
   type: "event" | "task" | "note" | "project";
   id: number;
   startTime?: string; // solo eventos: para saltar a la semana correcta antes de abrir el diálogo
+  plannerId?: number; // solo tareas: a qué tablero saltar antes de poder centrar la tarjeta (ver Planner)
 }
 
 interface NavItem {
@@ -422,7 +423,13 @@ export function AppShell({
         </button>
       </div>
 
-      <div className="flex-1">
+      {/* min-w-0: por defecto un hijo flex no encoge por debajo del ancho intrínseco de su
+          contenido ("min-width: auto"), así que sin esto cualquier página con contenido ancho
+          (p.ej. el kanban de una página personalizada con varias columnas, ver CustomPagePage)
+          empujaría TODO el layout en horizontal en vez de hacer scroll dentro de su propio
+          overflow-x-auto — con min-w-0 el hijo sí puede encoger a su hueco asignado y el scroll
+          horizontal queda contenido donde corresponde. */}
+      <div className="min-w-0 flex-1">
         <nav className="flex gap-1 overflow-x-auto border-b border-border px-6 py-4 lg:hidden">
           {FLAT_NAV.map((item) => (
             <button
@@ -576,7 +583,11 @@ function GlobalSearch({ onNavigate }: { onNavigate: (tab: Tab, focus: SearchFocu
               {results!.tasks.length > 0 && (
                 <SearchGroup label="Tareas">
                   {results!.tasks.map((t) => (
-                    <SearchResultRow key={`task-${t.id}`} title={t.title} onClick={() => pick("planificador", { type: "task", id: t.id })} />
+                    <SearchResultRow
+                      key={`task-${t.id}`}
+                      title={t.title}
+                      onClick={() => pick("planificador", { type: "task", id: t.id, plannerId: t.plannerId })}
+                    />
                   ))}
                 </SearchGroup>
               )}

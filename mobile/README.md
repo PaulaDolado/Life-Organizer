@@ -11,9 +11,10 @@ completo, y `src/sync/` para cómo lo consume esta app.
 Una única pantalla ("Hoy") tras iniciar sesión: eventos de hoy (solo lectura), tareas con
 vencimiento hoy (toggle hecha/pendiente), hábitos (toggle marcado hoy) y notas rápidas
 (crear/marcar/borrar) — todo funciona sin conexión, escribiendo primero en SQLite y
-sincronizando después. **No hay registro** (la cuenta se crea desde el dashboard web) ni vista
-semanal/mensual de Agenda, tablero del Planificador, Proyectos, Finanzas, Hobbies u Objetivos —
-quedan solo en web por ahora; extenderlos reutilizaría el mismo mecanismo de `src/sync/`.
+sincronizando después. La pantalla de login incluye también el registro (mismo toggle que
+`dashboard/src/pages/LoginPage.tsx`), pero no hay vista semanal/mensual de Agenda, tablero del
+Planificador, Proyectos, Finanzas, Hobbies u Objetivos — quedan solo en web por ahora; extenderlos
+reutilizaría el mismo mecanismo de `src/sync/`.
 
 ## Cómo funciona el offline
 

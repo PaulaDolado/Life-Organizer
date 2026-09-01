@@ -96,7 +96,11 @@ export function DashboardPage() {
         />
       )}
       {activeTab === "planificador" && (
-        <PlanificadorPage focusTaskId={focus?.type === "task" ? focus.id : undefined} onFocusHandled={clearFocus} />
+        <PlanificadorPage
+          focusTaskId={focus?.type === "task" ? focus.id : undefined}
+          focusPlannerId={focus?.type === "task" ? focus.plannerId : undefined}
+          onFocusHandled={clearFocus}
+        />
       )}
       {activeTab === "horario" && <SchedulePage />}
       {activeTab === "metas" && <MetasPage />}

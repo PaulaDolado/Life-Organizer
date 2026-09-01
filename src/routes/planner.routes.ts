@@ -5,6 +5,13 @@ import { validate } from "../middlewares/validation";
 import {
   idParamSchema,
   subtaskParamSchema,
+  fieldParamSchema,
+  createPlannerSchema,
+  updatePlannerSchema,
+  movePlannerSchema,
+  createFieldSchema,
+  updateFieldSchema,
+  moveFieldSchema,
   listTasksQuerySchema,
   createTaskSchema,
   updateTaskSchema,
@@ -16,6 +23,116 @@ import {
 const router = Router();
 
 router.use(authMiddleware);
+
+/**
+ * @openapi
+ * /planner/boards:
+ *   get:
+ *     tags: [Planner]
+ *     summary: Lista los tableros de planificador del usuario (puede tener varios), ordenados
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ planners: [...] }" }
+ *   post:
+ *     tags: [Planner]
+ *     summary: Crea un tablero de planificador nuevo con nombre propio
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Tablero creado, sin tareas }
+ */
+router.get("/boards", plannerController.listPlanners);
+router.post("/boards", validate(createPlannerSchema), plannerController.createPlanner);
+
+/**
+ * @openapi
+ * /planner/boards/{id}:
+ *   put:
+ *     tags: [Planner]
+ *     summary: Renombra un tablero de planificador
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Tablero actualizado }
+ *   delete:
+ *     tags: [Planner]
+ *     summary: Elimina un tablero de planificador y todas sus tareas
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Tablero eliminado }
+ */
+router.put("/boards/:id", validate(idParamSchema, "params"), validate(updatePlannerSchema), plannerController.updatePlanner);
+router.delete("/boards/:id", validate(idParamSchema, "params"), plannerController.deletePlanner);
+
+/**
+ * @openapi
+ * /planner/boards/{id}/move:
+ *   put:
+ *     tags: [Planner]
+ *     summary: Sube o baja un tablero un puesto entre los del usuario
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Tablero movido (no-op si ya está en el extremo) }
+ */
+router.put("/boards/:id/move", validate(idParamSchema, "params"), validate(movePlannerSchema), plannerController.movePlanner);
+
+/**
+ * @openapi
+ * /planner/boards/{id}/fields:
+ *   get:
+ *     tags: [Planner]
+ *     summary: Lista las columnas personalizadas de un tablero (texto, número, fecha o selección)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: "{ fields: [...] }" }
+ *   post:
+ *     tags: [Planner]
+ *     summary: Crea una columna personalizada nueva en el tablero
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       201: { description: Columna creada }
+ */
+router.get("/boards/:id/fields", validate(idParamSchema, "params"), plannerController.listFields);
+router.post("/boards/:id/fields", validate(idParamSchema, "params"), validate(createFieldSchema), plannerController.createField);
+
+/**
+ * @openapi
+ * /planner/boards/{id}/fields/{fieldId}:
+ *   put:
+ *     tags: [Planner]
+ *     summary: Renombra una columna personalizada o cambia sus opciones (tipo "selección")
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Columna actualizada }
+ *   delete:
+ *     tags: [Planner]
+ *     summary: Elimina una columna personalizada (los valores que tuvieran las tareas dejan de mostrarse)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Columna eliminada }
+ */
+router.put(
+  "/boards/:id/fields/:fieldId",
+  validate(fieldParamSchema, "params"),
+  validate(updateFieldSchema),
+  plannerController.updateField
+);
+router.delete("/boards/:id/fields/:fieldId", validate(fieldParamSchema, "params"), plannerController.deleteField);
+
+/**
+ * @openapi
+ * /planner/boards/{id}/fields/{fieldId}/move:
+ *   put:
+ *     tags: [Planner]
+ *     summary: Sube o baja una columna personalizada un puesto entre las del tablero
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Columna movida (no-op si ya está en el extremo) }
+ */
+router.put(
+  "/boards/:id/fields/:fieldId/move",
+  validate(fieldParamSchema, "params"),
+  validate(moveFieldSchema),
+  plannerController.moveField
+);
 
 /**
  * @openapi

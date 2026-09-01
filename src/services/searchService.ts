@@ -29,7 +29,10 @@ export async function search(userId: number, query: string) {
       where: { userId, OR: [{ title: insensitive }, { description: insensitive }] },
       take: RESULT_LIMIT,
       orderBy: { createdAt: "desc" },
-      select: { id: true, title: true, status: true },
+      // `plannerId` hace falta en el resultado: el usuario puede tener varias tareas del mismo
+      // nombre repartidas en varios planners (ver Planner), así que el dashboard necesita saber
+      // a cuál saltar antes de poder centrar la tarjeta (ver PlanificadorPage.focusTaskId).
+      select: { id: true, title: true, status: true, plannerId: true },
     }),
     prisma.note.findMany({
       where: { userId, content: insensitive },

@@ -31,7 +31,9 @@ const TYPES: { value: EventType; label: string }[] = [
   { value: "meeting", label: "Reunión" },
   { value: "evento", label: "Evento" },
   { value: "cita", label: "Cita" },
+  { value: "cumpleanos", label: "Cumpleaños" },
   { value: "free", label: "Libre" },
+  { value: "otro", label: "Otro" },
 ];
 const RECURRENCES: { value: RecurringPattern; label: string }[] = [
   { value: "daily", label: "Cada día" },
@@ -56,7 +58,9 @@ const TYPE_STYLES: Record<string, string> = {
   meeting: "bg-warning/15 text-warning",
   evento: "bg-positive/15 text-positive",
   cita: "bg-habit/15 text-habit",
+  cumpleanos: "bg-cover/15 text-cover",
   free: "bg-muted text-muted-foreground",
+  otro: "bg-muted text-muted-foreground",
 };
 const DEFAULT_TYPE_STYLE = "bg-muted text-muted-foreground";
 const TYPE_LABELS: Record<string, string> = {
@@ -66,7 +70,9 @@ const TYPE_LABELS: Record<string, string> = {
   meeting: "Reunión",
   evento: "Evento",
   cita: "Cita",
+  cumpleanos: "Cumpleaños",
   free: "Libre",
+  otro: "Otro",
 };
 
 type ViewMode = "week" | "month" | "year" | "agenda";

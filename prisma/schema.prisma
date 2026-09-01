@@ -44,6 +44,7 @@ model User {
   hobbySessions HobbySession[]
   notifications Notification[]
   tasks         Task[]
+  planners      Planner[]
   notes         Note[]
   habits        Habit[]
   habitLogs     HabitLog[]
@@ -62,7 +63,7 @@ model Event {
   userId           Int
   title            String
   description      String?
-  type             String // "work", "study", "gym", "meeting", "free", "evento", "cita"
+  type             String // "work", "study", "gym", "meeting", "free", "evento", "cita", "cumpleanos", "otro"
   startTime        DateTime
   endTime          DateTime
   location         String?
@@ -281,12 +282,51 @@ model HobbySession {
   @@index([hobbyId, date])
 }
 
-// Planificador de tareas (submenú de Agenda): tablero kanban con tres columnas fijas.
-// `order` es un float para poder insertar una tarea entre otras dos sin tener que
-// renumerar el resto de la columna (orden = punto medio entre las tarjetas vecinas).
+// Un tablero de planificador con nombre propio (p.ej. "Trabajo", "Personal") — mismo patrón que
+// Schedule (Horario): el usuario puede tener varios y verlos de uno en uno con flechas o todos
+// apilados (ver PlanificadorPage). `order` es el orden entre ellos.
+model Planner {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks  Task[]
+  fields PlannerField[]
+
+  @@index([userId, order])
+}
+
+// Columna personalizada definida por el usuario para UN planner concreto (no global — cada
+// tablero tiene las suyas, como las propiedades de una base de datos de Notion). `options` solo
+// se usa cuando `type` es "select" (la lista de opciones entre las que elegir); el valor real de
+// cada tarea para este campo vive en Task.customFields, indexado por este `id`.
+model PlannerField {
+  id        Int      @id @default(autoincrement())
+  plannerId Int
+  name      String
+  type      String // "text" | "number" | "date" | "select"
+  options   String[] @default([])
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  planner Planner @relation(fields: [plannerId], references: [id], onDelete: Cascade)
+
+  @@index([plannerId, order])
+}
+
+// Planificador de tareas (submenú de Agenda): tablero kanban con tres columnas fijas, dentro de
+// un Planner (el usuario puede tener varios, ver arriba). `order` es un float para poder insertar
+// una tarea entre otras dos sin tener que renumerar el resto de la columna (orden = punto medio
+// entre las tarjetas vecinas).
 model Task {
   id          Int       @id @default(autoincrement())
   userId      Int
+  plannerId   Int // a qué tablero de planificador pertenece — ver Planner
   projectId   Int? // vínculo opcional a un Project — ver comentario en Project.plannerTasks
   title       String
   description String?
@@ -304,15 +344,22 @@ model Task {
   tags        String[]  @default([])
   estimatedMinutes Int? // estimación previa, en minutos
   actualMinutes    Int  @default(0) // acumulado real registrado vía POST /planner/tasks/:id/time
+  // Valores de las columnas personalizadas de este planner (ver PlannerField): objeto plano
+  // { [fieldId]: valor }, con el valor como string (texto/fecha ISO/opción elegida) o number
+  // (tipo "número") — igual patrón de "blob JSON de valores sueltos" que CustomPage.content, así
+  // que añadir/quitar columnas personalizadas no pide migración.
+  customFields Json      @default("{}")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planner  Planner   @relation(fields: [plannerId], references: [id], onDelete: Cascade)
   project  Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   subtasks Subtask[]
 
   @@index([userId, status])
   @@index([userId, dueDate])
+  @@index([plannerId, status])
   @@index([projectId])
 }
 

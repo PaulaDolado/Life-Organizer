@@ -3,11 +3,15 @@ import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage, EmptyState } from "../components/Feedback";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { CustomFieldInput, formatCustomFieldValue } from "../components/CustomFieldInput";
 import { newId } from "../utils/id";
 import { CUSTOM_PAGE_TEMPLATE_META } from "../utils/customPageTemplates";
 import {
   AgendaNote,
   ChecklistItem,
+  CustomFieldDef,
+  CustomFieldType,
+  CustomFieldValue,
   CustomPage,
   CustomPageContentMap,
   CustomPageTemplate,
@@ -16,6 +20,8 @@ import {
   KanbanColumn,
   SimpleGoal,
 } from "../types";
+
+const FIELD_TYPE_LABELS: Record<CustomFieldType, string> = { text: "Texto", number: "Número", date: "Fecha", select: "Selección" };
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -43,6 +49,10 @@ export function CustomPagePage({
   const [content, setContent] = useState<CustomPageContentMap[CustomPageTemplate] | null>(null);
   const [savingState, setSavingState] = useState<"idle" | "saving" | "saved">("idle");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Solo se usa cuando template === "kanban" — kanban sigue siendo la vista por defecto (igual
+  // que en PlanificadorPage), tabla es una alternativa que lee/escribe el mismo `columns`.
+  const [kanbanView, setKanbanView] = useState<"kanban" | "table">("kanban");
+  const [managingFields, setManagingFields] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sincroniza el estado local editable en cuanto llega (o cambia) la página del servidor.
@@ -65,6 +75,14 @@ export function CustomPagePage({
   const updateContent = (next: CustomPageContentMap[CustomPageTemplate]) => {
     setContent(next);
     scheduleSave(next);
+  };
+
+  // Crear una propiedad personalizada nueva — llamado tanto desde el diálogo "+ Propiedad" de la
+  // cabecera (KanbanFieldsDialog) como desde el propio "+ Añadir propiedad" dentro de cada
+  // tarjeta (ver KanbanCardDialog): mismo destino, `content.kanban.fieldDefs`.
+  const addFieldDef = (name: string, type: CustomFieldType, options?: string[]) => {
+    const current = content as CustomPageContentMap["kanban"];
+    updateContent({ ...current, fieldDefs: [...(current.fieldDefs ?? []), { id: newId(), name, type, options }] });
   };
 
   // El título se guarda al perder el foco (no en cada tecla), igual que el de una página de
@@ -134,15 +152,47 @@ export function CustomPagePage({
               acción sobre la página entera, como el propio borrado, no algo que dependa de
               desplazarse hasta el final de las columnas. */}
           {page.template === "kanban" && (
-            <KanbanAddColumnForm
-              onAdd={(columnTitle) => {
-                const current = content as CustomPageContentMap["kanban"];
-                updateContent({ columns: [...current.columns, { id: newId(), title: columnTitle, cards: [] }] });
-              }}
-            />
+            <>
+              <div className="flex items-center overflow-hidden rounded-full border border-border">
+                {(["kanban", "table"] as const).map((mode, index) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setKanbanView(mode)}
+                    className={`cursor-pointer px-3 py-2 text-xs font-medium transition-colors ${index > 0 ? "border-l border-border" : ""} ${
+                      kanbanView === mode ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {mode === "kanban" ? "Kanban" : "Tabla"}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setManagingFields(true)}
+                title="Propiedades personalizadas"
+                className="cursor-pointer whitespace-nowrap rounded-full border border-border px-3 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+              >
+                + Propiedad
+              </button>
+              <KanbanAddColumnForm
+                onAdd={(columnTitle) => {
+                  const current = content as CustomPageContentMap["kanban"];
+                  updateContent({ columns: [...current.columns, { id: newId(), title: columnTitle, cards: [] }] });
+                }}
+              />
+            </>
           )}
         </div>
       </div>
+
+      {page.template === "kanban" && managingFields && (
+        <KanbanFieldsDialog
+          fieldDefs={(content as CustomPageContentMap["kanban"]).fieldDefs ?? []}
+          onChange={(fieldDefs) => updateContent({ ...(content as CustomPageContentMap["kanban"]), fieldDefs })}
+          onClose={() => setManagingFields(false)}
+        />
+      )}
 
       {page.template === "nota" && (
         <RichTextEditor
@@ -151,12 +201,22 @@ export function CustomPagePage({
           placeholder="Escribe aquí…"
         />
       )}
-      {page.template === "kanban" && (
-        <KanbanTemplate
-          columns={(content as CustomPageContentMap["kanban"]).columns}
-          onChange={(columns) => updateContent({ columns })}
-        />
-      )}
+      {page.template === "kanban" &&
+        (kanbanView === "kanban" ? (
+          <KanbanTemplate
+            columns={(content as CustomPageContentMap["kanban"]).columns}
+            fieldDefs={(content as CustomPageContentMap["kanban"]).fieldDefs ?? []}
+            onChange={(columns) => updateContent({ ...(content as CustomPageContentMap["kanban"]), columns })}
+            onAddField={addFieldDef}
+          />
+        ) : (
+          <KanbanTableView
+            columns={(content as CustomPageContentMap["kanban"]).columns}
+            fieldDefs={(content as CustomPageContentMap["kanban"]).fieldDefs ?? []}
+            onChange={(columns) => updateContent({ ...(content as CustomPageContentMap["kanban"]), columns })}
+            onAddField={addFieldDef}
+          />
+        ))}
       {page.template === "finanzas" && (
         <FinanceTemplate
           entries={(content as CustomPageContentMap["finanzas"]).entries}
@@ -501,6 +561,10 @@ const KANBAN_COLUMN_STYLES = [
   { box: "border-positive/30 bg-positive/10", header: "text-positive" },
 ];
 
+// Cuántas columnas caben repartidas a partes iguales antes de que el tablero empiece a
+// desplazarse en horizontal — ver el cálculo de `columnWidth` en KanbanTemplate.
+const MAX_VISIBLE_COLUMNS = 6;
+
 // Igual límite y mecánica que RichTextEditor.insertImage: se embebe como data URL dentro del
 // propio JSON de la tarjeta (CustomPage.content), no hay subida a un storage aparte.
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB
@@ -514,12 +578,207 @@ function readImageFile(file: File): Promise<string> {
   });
 }
 
+/**
+ * Gestión de las "propiedades" personalizadas de ESTE tablero kanban (ver CustomFieldDef en
+ * types.ts): texto, número, fecha o selección — mismo concepto que las columnas personalizadas
+ * del Planificador (ver PlannerFieldsDialog), pero aquí todo vive en `content.kanban.fieldDefs`
+ * (JSON de cliente, sin API propia) en vez de en su propia tabla — por eso `onChange` sustituye
+ * la lista entera en vez de hacer llamadas de red por cada cambio.
+ */
+function KanbanFieldsDialog({
+  fieldDefs,
+  onChange,
+  onClose,
+}: {
+  fieldDefs: CustomFieldDef[];
+  onChange: (fieldDefs: CustomFieldDef[]) => void;
+  onClose: () => void;
+}) {
+  const addField = (name: string, type: CustomFieldType, options?: string[]) => {
+    onChange([...fieldDefs, { id: newId(), name, type, options }]);
+  };
+
+  const renameField = (fieldId: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    onChange(fieldDefs.map((f) => (f.id === fieldId ? { ...f, name: trimmed } : f)));
+  };
+
+  const removeField = (fieldId: string) => onChange(fieldDefs.filter((f) => f.id !== fieldId));
+
+  const moveField = (fieldId: string, direction: "up" | "down") => {
+    const index = fieldDefs.findIndex((f) => f.id === fieldId);
+    const swapWith = direction === "up" ? index - 1 : index + 1;
+    if (swapWith < 0 || swapWith >= fieldDefs.length) return;
+    const next = [...fieldDefs];
+    [next[index], next[swapWith]] = [next[swapWith], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)]">
+        <div className="mb-1 flex items-center justify-between gap-4">
+          <h3 className="font-serif text-xl">Propiedades personalizadas</h3>
+          <button type="button" onClick={onClose} className="shrink-0 cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            ✕ Cerrar
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">Añade tus propias propiedades a las tarjetas de este tablero.</p>
+
+        {fieldDefs.length > 0 && (
+          <ul className="mb-4 max-h-60 space-y-1 overflow-y-auto">
+            {fieldDefs.map((field, index) => (
+              <li key={field.id} className="flex items-center gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted">
+                <input
+                  defaultValue={field.name}
+                  onBlur={(e) => renameField(field.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                  className="min-w-0 flex-1 border-b border-transparent bg-transparent text-sm outline-none focus:border-primary"
+                />
+                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{FIELD_TYPE_LABELS[field.type]}</span>
+                <button
+                  onClick={() => moveField(field.id, "up")}
+                  disabled={index === 0}
+                  title="Subir"
+                  className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => moveField(field.id, "down")}
+                  disabled={index === fieldDefs.length - 1}
+                  title="Bajar"
+                  className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ↓
+                </button>
+                <button onClick={() => removeField(field.id)} title="Eliminar propiedad" className="shrink-0 cursor-pointer rounded px-1 text-xs text-muted-foreground hover:text-destructive">
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <AddFieldForm onAdd={addField} className="space-y-2 border-t border-border pt-4" />
+      </div>
+    </div>
+  );
+}
+
+// Formulario compacto para crear una propiedad personalizada nueva — se usa tanto aquí (la vista
+// de gestión completa) como dentro de cada tarjeta (ver InlineAddField/KanbanCardDialog), para no
+// obligar a cerrar la tarjeta y volver a la cabecera solo para añadir la propiedad que hace falta
+// justo ahora.
+function AddFieldForm({
+  onAdd,
+  className,
+}: {
+  onAdd: (name: string, type: CustomFieldType, options?: string[]) => void;
+  className?: string;
+}) {
+  const [name, setName] = useState("");
+  const [type, setType] = useState<CustomFieldType>("text");
+  const [optionsText, setOptionsText] = useState("");
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const options = type === "select" ? optionsText.split(",").map((o) => o.trim()).filter(Boolean) : undefined;
+    onAdd(trimmed, type, options);
+    setName("");
+    setOptionsText("");
+    setType("text");
+  };
+
+  return (
+    <form onSubmit={submit} className={className ?? "space-y-2"}>
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Nombre de la propiedad"
+        className="field-input w-full text-sm"
+      />
+      <select value={type} onChange={(e) => setType(e.target.value as CustomFieldType)} className="field-input w-full text-xs">
+        {(Object.keys(FIELD_TYPE_LABELS) as CustomFieldType[]).map((t) => (
+          <option key={t} value={t}>
+            {FIELD_TYPE_LABELS[t]}
+          </option>
+        ))}
+      </select>
+      {type === "select" && (
+        <input
+          value={optionsText}
+          onChange={(e) => setOptionsText(e.target.value)}
+          placeholder="Opciones separadas por coma"
+          className="field-input w-full text-xs"
+        />
+      )}
+      <button type="submit" className="btn-dark w-full text-xs">
+        + Añadir propiedad
+      </button>
+    </form>
+  );
+}
+
+// Disparador plegado de AddFieldForm — un simple "+ Añadir propiedad" que, al clicarlo, revela el
+// formulario. Vive dentro de cada tarjeta (ver KanbanCardDialog) para poder crear una propiedad
+// nueva sin salir de ahí.
+function InlineAddField({ onAdd }: { onAdd: (name: string, type: CustomFieldType, options?: string[]) => void }) {
+  const [adding, setAdding] = useState(false);
+
+  if (!adding) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+      >
+        + Añadir propiedad
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-dashed border-border p-2">
+      <AddFieldForm
+        onAdd={(name, type, options) => {
+          onAdd(name, type, options);
+          setAdding(false);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => setAdding(false)}
+        className="w-full cursor-pointer rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+      >
+        Cancelar
+      </button>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Kanban — tablero propio de columnas/tarjetas (no reutiliza Task/Planificador, ver comentario
 // en el schema de Prisma) con drag & drop entre columnas y el mismo aspecto (colores, anchura de
 // columna) que el tablero del Planificador.
 // ---------------------------------------------------------------------------------------------
-function KanbanTemplate({ columns, onChange }: { columns: KanbanColumn[]; onChange: (columns: KanbanColumn[]) => void }) {
+function KanbanTemplate({
+  columns,
+  fieldDefs,
+  onChange,
+  onAddField,
+}: {
+  columns: KanbanColumn[];
+  fieldDefs: CustomFieldDef[];
+  onChange: (columns: KanbanColumn[]) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
+}) {
   const [draggedCard, setDraggedCard] = useState<{ columnId: string; cardId: string } | null>(null);
   const [confirmingColumnId, setConfirmingColumnId] = useState<string | null>(null);
 
@@ -567,6 +826,22 @@ function KanbanTemplate({ columns, onChange }: { columns: KanbanColumn[]; onChan
     );
   };
 
+  // Valor de UNA propiedad personalizada — a diferencia de updateCard (que sobrescribe los campos
+  // que le pasen), aquí hace falta fusionar a mano con `card.fields` ya existente: si se
+  // sobrescribiera entero, cambiar el valor de una propiedad borraría las demás.
+  const updateCardField = (columnId: string, cardId: string, fieldId: string, value: CustomFieldValue) => {
+    onChange(
+      columns.map((c) =>
+        c.id === columnId
+          ? {
+              ...c,
+              cards: c.cards.map((card) => (card.id === cardId ? { ...card, fields: { ...card.fields, [fieldId]: value } } : card)),
+            }
+          : c
+      )
+    );
+  };
+
   const dropOnColumn = (toColumnId: string) => {
     if (!draggedCard) return;
     const { columnId: fromColumnId, cardId } = draggedCard;
@@ -584,29 +859,236 @@ function KanbanTemplate({ columns, onChange }: { columns: KanbanColumn[]; onChan
     );
   };
 
+  // Fila horizontal (no grid que envuelve): una columna nueva SIEMPRE se añade al final del
+  // array (ver KanbanAddColumnForm → CustomPagePage.updateContent), y aquí eso se traduce
+  // directamente en "aparece a la derecha de las demás", sin saltar a una fila de abajo. El ancho
+  // de cada columna se calcula para que quepan hasta `MAX_VISIBLE_COLUMNS` a la vez en pantalla
+  // (repartiendo el ancho disponible a partes iguales); a partir de la 7ª, en vez de encogerse
+  // más, el tablero entero empieza a desplazarse en horizontal (overflow-x-auto) manteniendo el
+  // mismo ancho por columna — así nunca quedan ilegiblemente estrechas.
+  const visibleColumns = Math.max(1, Math.min(columns.length, MAX_VISIBLE_COLUMNS));
+  const columnWidth = `max(240px, calc((100% - ${(visibleColumns - 1) * 1.5}rem) / ${visibleColumns}))`;
+
   return (
-    // Mismo grid que PlanificadorPage (grid gap-6 md:grid-cols-3): cada columna ocupa el mismo
-    // ancho que allí en vez de una tira estrecha con scroll horizontal. Con más de 3 columnas
-    // simplemente pasan a la fila siguiente. El formulario "+ Columna" vive en la cabecera de la
-    // página (ver CustomPagePage), debajo de "Eliminar página" — no aquí.
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {columns.map((column, index) => (
-        <KanbanColumnView
-          key={column.id}
-          column={column}
-          style={KANBAN_COLUMN_STYLES[index % KANBAN_COLUMN_STYLES.length]}
-          confirmingDelete={confirmingColumnId === column.id}
-          draggedCardId={draggedCard?.cardId ?? null}
-          onDragStartCard={(cardId) => setDraggedCard({ columnId: column.id, cardId })}
-          onDropCard={() => dropOnColumn(column.id)}
-          onRename={(title) => renameColumn(column.id, title)}
-          onDeleteClick={(e) => handleDeleteColumnClick(e, column)}
-          onDeleteBlur={() => setConfirmingColumnId((id) => (id === column.id ? null : id))}
-          onAddCard={(text, description) => addCard(column.id, text, description)}
-          onRemoveCard={(cardId) => removeCard(column.id, cardId)}
-          onCardUpdate={(cardId, fields) => updateCard(column.id, cardId, fields)}
+    <div className="overflow-x-auto pb-2">
+      <div className="flex gap-6">
+        {columns.map((column, index) => (
+          <div key={column.id} className="shrink-0" style={{ width: columnWidth }}>
+            <KanbanColumnView
+              column={column}
+              fieldDefs={fieldDefs}
+              style={KANBAN_COLUMN_STYLES[index % KANBAN_COLUMN_STYLES.length]}
+              confirmingDelete={confirmingColumnId === column.id}
+              draggedCardId={draggedCard?.cardId ?? null}
+              onDragStartCard={(cardId) => setDraggedCard({ columnId: column.id, cardId })}
+              onDropCard={() => dropOnColumn(column.id)}
+              onRename={(title) => renameColumn(column.id, title)}
+              onDeleteClick={(e) => handleDeleteColumnClick(e, column)}
+              onDeleteBlur={() => setConfirmingColumnId((id) => (id === column.id ? null : id))}
+              onAddCard={(text, description) => addCard(column.id, text, description)}
+              onRemoveCard={(cardId) => removeCard(column.id, cardId)}
+              onCardUpdate={(cardId, fields) => updateCard(column.id, cardId, fields)}
+              onCardFieldUpdate={(cardId, fieldId, value) => updateCardField(column.id, cardId, fieldId, value)}
+              onAddField={onAddField}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Alternativa en tabla al mismo `columns` — mismo patrón vista-previa/diálogo que KanbanCardItem
+// (clicar el nombre abre KanbanCardDialog), pero todas las tarjetas de todas las columnas en una
+// sola lista, con la columna como una celda más (select) en vez de una agrupación visual. No
+// tiene drag & drop propio: mover una tarjeta de columna es el `<select>` de la fila.
+function KanbanTableView({
+  columns,
+  fieldDefs,
+  onChange,
+  onAddField,
+}: {
+  columns: KanbanColumn[];
+  fieldDefs: CustomFieldDef[];
+  onChange: (columns: KanbanColumn[]) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
+}) {
+  const [openCard, setOpenCard] = useState<{ columnId: string; cardId: string } | null>(null);
+  const [addingColumnId, setAddingColumnId] = useState<string | null>(null);
+  const [newCardText, setNewCardText] = useState("");
+
+  const rows = columns.flatMap((column) => column.cards.map((card) => ({ column, card })));
+
+  const updateCardField = (columnId: string, cardId: string, fieldId: string, value: CustomFieldValue) => {
+    onChange(
+      columns.map((c) =>
+        c.id === columnId
+          ? { ...c, cards: c.cards.map((card) => (card.id === cardId ? { ...card, fields: { ...card.fields, [fieldId]: value } } : card)) }
+          : c
+      )
+    );
+  };
+
+  const moveCard = (fromColumnId: string, cardId: string, toColumnId: string) => {
+    if (fromColumnId === toColumnId) return;
+    const fromColumn = columns.find((c) => c.id === fromColumnId);
+    const card = fromColumn?.cards.find((c) => c.id === cardId);
+    if (!card) return;
+    onChange(
+      columns.map((c) => {
+        if (c.id === fromColumnId) return { ...c, cards: c.cards.filter((cc) => cc.id !== cardId) };
+        if (c.id === toColumnId) return { ...c, cards: [...c.cards, card] };
+        return c;
+      })
+    );
+  };
+
+  const removeCard = (columnId: string, cardId: string) => {
+    onChange(columns.map((c) => (c.id === columnId ? { ...c, cards: c.cards.filter((card) => card.id !== cardId) } : c)));
+  };
+
+  const updateCard = (columnId: string, cardId: string, fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => {
+    onChange(columns.map((c) => (c.id === columnId ? { ...c, cards: c.cards.map((card) => (card.id === cardId ? { ...card, ...fields } : card)) } : c)));
+  };
+
+  const addCard = (columnId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    onChange(columns.map((c) => (c.id === columnId ? { ...c, cards: [...c.cards, { id: newId(), text: trimmed, image: null }] } : c)));
+    setNewCardText("");
+    setAddingColumnId(null);
+  };
+
+  const openCardData = openCard ? columns.find((c) => c.id === openCard.columnId)?.cards.find((c) => c.id === openCard.cardId) : null;
+
+  if (columns.length === 0) {
+    return <p className="rounded-3xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Añade una columna para empezar.</p>;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-[var(--shadow-soft)]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse">
+          <thead>
+            <tr className="border-b border-border bg-muted/40 text-left text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              <th className="px-4 py-3">Nombre</th>
+              <th className="w-48 px-4 py-3">Columna</th>
+              <th className="px-4 py-3">Descripción</th>
+              {fieldDefs.map((field) => (
+                <th key={field.id} className="w-32 px-4 py-3">
+                  {field.name}
+                </th>
+              ))}
+              <th className="w-16 px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={4 + fieldDefs.length} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  Sin tarjetas
+                </td>
+              </tr>
+            ) : (
+              rows.map(({ column, card }) => (
+                <tr key={card.id} className="group">
+                  <td className="max-w-0 px-4 py-2.5">
+                    <button
+                      onClick={() => setOpenCard({ columnId: column.id, cardId: card.id })}
+                      className="flex w-full min-w-0 cursor-pointer items-center gap-1.5 truncate text-left text-sm hover:underline"
+                    >
+                      {card.image && <span aria-hidden="true">🖼</span>}
+                      <span className="min-w-0 truncate">{card.text}</span>
+                      {card.notes && <span className="shrink-0 text-xs text-muted-foreground">📝</span>}
+                    </button>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <select
+                      value={column.id}
+                      onChange={(e) => moveCard(column.id, card.id, e.target.value)}
+                      className="field-input w-full text-xs"
+                    >
+                      {columns.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="max-w-0 px-4 py-2.5 text-sm text-muted-foreground">
+                    <span className="block truncate">{card.description}</span>
+                  </td>
+                  {fieldDefs.map((field) => (
+                    <td key={field.id} className="px-4 py-2.5">
+                      <CustomFieldInput
+                        type={field.type}
+                        options={field.options}
+                        value={card.fields?.[field.id] ?? null}
+                        onChange={(value) => updateCardField(column.id, card.id, field.id, value)}
+                      />
+                    </td>
+                  ))}
+                  <td className="px-4 py-2.5 text-right">
+                    <button
+                      onClick={() => removeCard(column.id, card.id)}
+                      className="cursor-pointer text-xs text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                      aria-label="Eliminar tarjeta"
+                    >
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Añadir tarjeta: elige columna igual que el select de cada fila, en vez de un formulario
+          por columna como en la vista kanban. */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          addCard(addingColumnId ?? columns[0].id, newCardText);
+        }}
+        className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3"
+      >
+        <input
+          value={newCardText}
+          onChange={(e) => setNewCardText(e.target.value)}
+          placeholder="+ Tarjeta"
+          className="field-input min-w-0 flex-1 text-sm"
         />
-      ))}
+        <select
+          value={addingColumnId ?? columns[0].id}
+          onChange={(e) => setAddingColumnId(e.target.value)}
+          className="field-input text-xs"
+        >
+          {columns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="btn-dark shrink-0 px-3 py-2 text-xs">
+          Añadir
+        </button>
+      </form>
+
+      {openCard && openCardData && (
+        <KanbanCardDialog
+          card={openCardData}
+          fieldDefs={fieldDefs}
+          onClose={() => setOpenCard(null)}
+          onUpdate={(fields) => updateCard(openCard.columnId, openCard.cardId, fields)}
+          onFieldUpdate={(fieldId, value) => updateCardField(openCard.columnId, openCard.cardId, fieldId, value)}
+          onAddField={onAddField}
+          onRemove={() => {
+            removeCard(openCard.columnId, openCard.cardId);
+            setOpenCard(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -641,6 +1123,7 @@ function KanbanAddColumnForm({ onAdd }: { onAdd: (title: string) => void }) {
 
 function KanbanColumnView({
   column,
+  fieldDefs,
   style,
   confirmingDelete,
   draggedCardId,
@@ -652,8 +1135,11 @@ function KanbanColumnView({
   onAddCard,
   onRemoveCard,
   onCardUpdate,
+  onCardFieldUpdate,
+  onAddField,
 }: {
   column: KanbanColumn;
+  fieldDefs: CustomFieldDef[];
   style: { box: string; header: string };
   confirmingDelete: boolean;
   draggedCardId: string | null;
@@ -665,6 +1151,8 @@ function KanbanColumnView({
   onAddCard: (text: string, description: string) => void;
   onRemoveCard: (cardId: string) => void;
   onCardUpdate: (cardId: string, fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
+  onCardFieldUpdate: (cardId: string, fieldId: string, value: CustomFieldValue) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -725,10 +1213,13 @@ function KanbanColumnView({
           <KanbanCardItem
             key={card.id}
             card={card}
+            fieldDefs={fieldDefs}
             isDragged={draggedCardId === card.id}
             onDragStart={() => onDragStartCard(card.id)}
             onRemove={() => onRemoveCard(card.id)}
             onUpdate={(fields) => onCardUpdate(card.id, fields)}
+            onFieldUpdate={(fieldId, value) => onCardFieldUpdate(card.id, fieldId, value)}
+            onAddField={onAddField}
           />
         ))}
       </div>
@@ -784,16 +1275,22 @@ function KanbanColumnView({
 // TaskCard/TaskDetailDialog en el Planificador.
 function KanbanCardItem({
   card,
+  fieldDefs,
   isDragged,
   onDragStart,
   onRemove,
   onUpdate,
+  onFieldUpdate,
+  onAddField,
 }: {
   card: KanbanCard;
+  fieldDefs: CustomFieldDef[];
   isDragged: boolean;
   onDragStart: () => void;
   onRemove: () => void;
   onUpdate: (fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
+  onFieldUpdate: (fieldId: string, value: CustomFieldValue) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
 }) {
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -828,10 +1325,33 @@ function KanbanCardItem({
 
         {card.description && <p className="mt-1.5 truncate text-xs text-muted-foreground">{card.description}</p>}
 
-        {card.notes && <span className="mt-2 inline-block text-xs text-muted-foreground">📝</span>}
+        {(card.notes || fieldDefs.length > 0) && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {card.notes && <span className="text-xs text-muted-foreground">📝</span>}
+            {fieldDefs.map((field) => {
+              const value = card.fields?.[field.id] ?? null;
+              if (value === null || value === "") return null;
+              return (
+                <span key={field.id} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {field.name}: {formatCustomFieldValue(field.type, value)}
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {detailOpen && <KanbanCardDialog card={card} onClose={() => setDetailOpen(false)} onUpdate={onUpdate} onRemove={onRemove} />}
+      {detailOpen && (
+        <KanbanCardDialog
+          card={card}
+          fieldDefs={fieldDefs}
+          onClose={() => setDetailOpen(false)}
+          onUpdate={onUpdate}
+          onFieldUpdate={onFieldUpdate}
+          onAddField={onAddField}
+          onRemove={onRemove}
+        />
+      )}
     </>
   );
 }
@@ -844,13 +1364,19 @@ function KanbanCardItem({
  */
 function KanbanCardDialog({
   card,
+  fieldDefs,
   onClose,
   onUpdate,
+  onFieldUpdate,
+  onAddField,
   onRemove,
 }: {
   card: KanbanCard;
+  fieldDefs: CustomFieldDef[];
   onClose: () => void;
   onUpdate: (fields: Partial<Pick<KanbanCard, "text" | "image" | "description" | "notes">>) => void;
+  onFieldUpdate: (fieldId: string, value: CustomFieldValue) => void;
+  onAddField: (name: string, type: CustomFieldType, options?: string[]) => void;
   onRemove: () => void;
 }) {
   const [text, setText] = useState(card.text);
@@ -1010,6 +1536,25 @@ function KanbanCardDialog({
           placeholder="Escribe aquí…"
           className="field-input mb-5 w-full min-w-[12rem] resize text-sm"
         />
+
+        {/* Propiedades personalizadas — una por cada CustomFieldDef de este tablero, más
+            "+ Añadir propiedad" para crear una nueva sin salir de la tarjeta (igual que
+            "+ Propiedad" en la cabecera de la página, ver KanbanFieldsDialog). */}
+        <div className="mb-5 space-y-2 border-t border-border pt-4">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Propiedades personalizadas</p>
+          {fieldDefs.map((field) => (
+            <label key={field.id} className="block text-xs text-muted-foreground">
+              {field.name}
+              <CustomFieldInput
+                type={field.type}
+                options={field.options}
+                value={card.fields?.[field.id] ?? null}
+                onChange={(value) => onFieldUpdate(field.id, value)}
+              />
+            </label>
+          ))}
+          <InlineAddField onAdd={onAddField} />
+        </div>
 
         <div className="flex justify-end border-t border-border pt-4">
           <button
