@@ -408,6 +408,10 @@ model Notification {
   // Para "event_reminder": el startTime de la ocurrencia concreta que generó el aviso
   // (los eventos recurrentes no materializan una fila por ocurrencia — ver utils/recurrence.ts —
   // así que esto es lo que distingue un recordatorio de "el lunes" de uno de "el martes siguiente").
+  // Para "goal_at_risk": no hay una "ocurrencia" real, así que se usa como bucket de "día
+  // natural" (inicio del día en UTC) — como mucho una alerta por meta y día, se lea o no la de
+  // hoy (ver notificationService.createGoalRiskAlerts, y por qué desduplicar solo por "sin leer"
+  // se sentía como spam).
   occurrenceAt DateTime?
   // Solo relevante para type="event_reminder": con cuántos minutos de antelación se generó ESTE
   // aviso concreto (ver Event.reminderMinutesBefore). Un evento puede tener varios avisos

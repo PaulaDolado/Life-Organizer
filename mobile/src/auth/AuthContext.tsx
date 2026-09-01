@@ -8,7 +8,7 @@ interface AuthContextValue {
   ready: boolean; // true una vez se comprobó si había una sesión guardada (evita parpadeo Login→Hoy)
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string, name: string, timezone?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -53,11 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(auth.user);
   };
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.post<AuthResponse>("/auth/login", { email, password });
+      // El backend espera `identifier` (busca por username O email, ver authService.login) — no
+      // `email`. Con el nombre de campo equivocado, TODO intento de login desde el móvil fallaba
+      // con 400 "identifier is required", encontrado al alinear esta pantalla con el dashboard
+      // (que sí manda `identifier`, ver dashboard/src/context/AuthContext.tsx).
+      const result = await api.post<AuthResponse>("/auth/login", { identifier, password });
       await persistAuth(result);
       applyAuth(result);
     } catch (err) {

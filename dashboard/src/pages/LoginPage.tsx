@@ -18,10 +18,26 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Solo en registro: repetir la contraseña para evitar errores de tecleo al crear la cuenta (en
+  // login no hace falta, ahí ya se sabe cuál es). Validación en el cliente antes de llamar a la
+  // API — ver handleSubmit.
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const switchMode = () => {
+    setMode((m) => (m === "login" ? "register" : "login"));
+    setFormError(null);
+    setConfirmPassword("");
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    if (mode === "register" && password !== confirmPassword) {
+      setFormError("Las contraseñas no coinciden.");
+      return;
+    }
     try {
       if (mode === "login") {
         await login(identifier, password);
@@ -59,7 +75,7 @@ export function LoginPage() {
               required
               minLength={3}
               maxLength={30}
-              placeholder="paula.dolado"
+              placeholder="Nuevo nombre de usuario"
               title="Minúsculas, números, puntos o guiones bajos"
               className="field-input normal-case tracking-normal"
             />
@@ -73,7 +89,7 @@ export function LoginPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
-              placeholder="demo o demo@lifeorganizer.dev"
+              placeholder="Introduce el usuario o email"
               className="field-input normal-case tracking-normal"
             />
           </label>
@@ -85,7 +101,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="demo@lifeorganizer.dev"
+              placeholder="Tu correo electrónico"
               className="field-input normal-case tracking-normal"
             />
           </label>
@@ -99,10 +115,25 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={mode === "register" ? 8 : undefined}
-            placeholder="Password123"
+            placeholder={mode === "register" ? "Contraseña nueva" : "Introduce la contraseña"}
             className="field-input normal-case tracking-normal"
           />
         </label>
+
+        {mode === "register" && (
+          <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            Password
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+              placeholder="Repite la contraseña nueva"
+              className="field-input normal-case tracking-normal"
+            />
+          </label>
+        )}
 
         {mode === "register" && (
           <p className="-mt-2 text-xs text-muted-foreground">
@@ -110,17 +141,15 @@ export function LoginPage() {
           </p>
         )}
 
-        {error && <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">⚠️ {error}</p>}
+        {(formError || error) && (
+          <p className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">⚠️ {formError || error}</p>
+        )}
 
         <button type="submit" disabled={loading} className="btn-primary mt-2">
           {loading ? "Cargando..." : mode === "login" ? "Iniciar sesión" : "Registrarse"}
         </button>
 
-        <button
-          type="button"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="cursor-pointer text-center text-xs text-muted-foreground hover:text-primary"
-        >
+        <button type="button" onClick={switchMode} className="cursor-pointer text-center text-xs text-muted-foreground hover:text-primary">
           {mode === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
         </button>
       </form>

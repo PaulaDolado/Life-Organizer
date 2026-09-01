@@ -16,19 +16,38 @@ function detectTimezone(): string | undefined {
 export function LoginScreen() {
   const { login, register, loading, error } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
+  // En login, un único campo sirve como username O email (ver authService.login: busca por
+  // cualquiera de los dos) — de ahí `identifier`, separado de `email` (que en registro sí tiene
+  // que ser un correo real). Mismo criterio que dashboard/src/pages/LoginPage.tsx.
+  const [identifier, setIdentifier] = useState("");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Solo en registro: repetir la contraseña para evitar errores de tecleo al crear la cuenta —
+  // mismo criterio que dashboard/src/pages/LoginPage.tsx.
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const switchMode = () => {
+    setMode((m) => (m === "login" ? "register" : "login"));
+    setFormError(null);
+    setConfirmPassword("");
+  };
 
   const handleSubmit = () => {
+    setFormError(null);
     if (mode === "login") {
-      if (!email || !password) return;
-      login(email, password).catch(() => {
+      if (!identifier || !password) return;
+      login(identifier, password).catch(() => {
         /* el error ya queda expuesto en `error` desde AuthContext */
       });
     } else {
-      if (!name || !username || !email || !password) return;
+      if (!name || !username || !email || !password || !confirmPassword) return;
+      if (password !== confirmPassword) {
+        setFormError("Las contraseñas no coinciden.");
+        return;
+      }
       register(username, email, password, name, detectTimezone()).catch(() => {
         /* el error ya queda expuesto en `error` desde AuthContext */
       });
@@ -56,7 +75,7 @@ export function LoginScreen() {
         {mode === "register" && (
           <TextInput
             style={styles.input}
-            placeholder="Nombre de usuario (p.ej. paula.dolado)"
+            placeholder="Nuevo nombre de usuario"
             autoCapitalize="none"
             value={username}
             onChangeText={setUsername}
@@ -64,24 +83,47 @@ export function LoginScreen() {
           />
         )}
 
+        {mode === "login" ? (
+          <TextInput
+            style={styles.input}
+            placeholder="Introduce el usuario o email"
+            autoCapitalize="none"
+            value={identifier}
+            onChangeText={setIdentifier}
+            editable={!loading}
+          />
+        ) : (
+          <TextInput
+            style={styles.input}
+            placeholder="Tu correo electrónico"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            editable={!loading}
+          />
+        )}
         <TextInput
           style={styles.input}
-          placeholder="Email"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-          editable={!loading}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Contraseña"
+          placeholder={mode === "register" ? "Contraseña nueva" : "Introduce la contraseña"}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
           editable={!loading}
-          onSubmitEditing={handleSubmit}
+          onSubmitEditing={mode === "login" ? handleSubmit : undefined}
         />
+
+        {mode === "register" && (
+          <TextInput
+            style={styles.input}
+            placeholder="Repite la contraseña nueva"
+            secureTextEntry
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            editable={!loading}
+            onSubmitEditing={handleSubmit}
+          />
+        )}
 
         {mode === "register" && (
           <Text style={styles.hint}>
@@ -89,13 +131,13 @@ export function LoginScreen() {
           </Text>
         )}
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {(formError || error) && <Text style={styles.error}>{formError || error}</Text>}
 
         <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSubmit} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{mode === "login" ? "Entrar" : "Registrarse"}</Text>}
         </Pressable>
 
-        <Pressable onPress={() => setMode(mode === "login" ? "register" : "login")} disabled={loading}>
+        <Pressable onPress={switchMode} disabled={loading}>
           <Text style={styles.switchModeText}>{mode === "login" ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}</Text>
         </Pressable>
       </ScrollView>

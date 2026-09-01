@@ -15,6 +15,15 @@ const REMINDER_WINDOW_MARGIN_MIN = 5;
 const EVENT_REMINDER_LOOKAHEAD_HOURS = 25;
 const TASK_DUE_WINDOW_HOURS = 24;
 
+// Bucket "día natural" (UTC) usado para desduplicar avisos que, a diferencia de un recordatorio
+// de evento, no tienen una ocurrencia concreta a la que enganchar `occurrenceAt` — ver
+// createGoalRiskAlerts. Mismo criterio que streakService/habitsService para "el mismo día".
+function startOfUtcDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setUTCHours(0, 0, 0, 0);
+  return copy;
+}
+
 /** "Evento en 15 minutos" / "Evento en 1 hora" / "Evento en 1 día" — según la antelación configurada. */
 function offsetLabel(minutes: number): string {
   if (minutes % 1440 === 0) {
@@ -181,10 +190,17 @@ export async function createEventReminders(now: Date = new Date()): Promise<numb
 
 /**
  * Revisa todas las metas incompletas de todos los usuarios y crea una notificación
- * "goal_at_risk" para las que `computeGoalRisk` marca como en riesgo. No re-crea una
- * alerta para la misma meta mientras ya haya una sin leer (evita spam cada 5 minutos
- * mientras la meta siga en riesgo) — una vez el usuario la lee, puede volver a dispararse
- * en el siguiente tick si sigue en riesgo.
+ * "goal_at_risk" para las que `computeGoalRisk` marca como en riesgo — como mucho UNA por
+ * meta y día natural (UTC), sin importar si la de hoy ya se leyó o no.
+ *
+ * Antes desduplicaba solo por "sin leer": en cuanto el usuario la marcaba como leída (o
+ * simplemente abría el panel de notificaciones, que las marca leídas), el siguiente tick del
+ * cron (cada 5 min, ver notificationScheduler) volvía a crear otra si la meta seguía en
+ * riesgo — y como "en riesgo" es un estado que normalmente no cambia de un tick a otro (el
+ * ritmo de una meta semanal/mensual no varía en 5 minutos), el usuario podía recibir una
+ * alerta nueva cada 5 minutos sin parar mientras no progresara en la meta. Al desduplicar por
+ * día (occurrenceAt = inicio del día en vez de "sin leer"), la misma meta como mucho avisa una
+ * vez al día — vuelve a avisar al día siguiente si sigue en riesgo, léase o no la de hoy.
  */
 export async function createGoalRiskAlerts(now: Date = new Date()): Promise<number> {
   const incompleteGoals = await prisma.goal.findMany({ where: { completed: false } });
@@ -192,13 +208,14 @@ export async function createGoalRiskAlerts(now: Date = new Date()): Promise<numb
 
   if (atRiskGoals.length === 0) return 0;
 
-  const existingUnread = await prisma.notification.findMany({
-    where: { type: "goal_at_risk", relatedId: { in: atRiskGoals.map((g) => g.id) }, read: false },
+  const today = startOfUtcDay(now);
+  const alertedToday = await prisma.notification.findMany({
+    where: { type: "goal_at_risk", relatedId: { in: atRiskGoals.map((g) => g.id) }, occurrenceAt: today },
     select: { relatedId: true },
   });
-  const alreadyAlerted = new Set(existingUnread.map((n) => n.relatedId));
+  const alreadyAlertedToday = new Set(alertedToday.map((n) => n.relatedId));
 
-  const toCreate = atRiskGoals.filter((g) => !alreadyAlerted.has(g.id));
+  const toCreate = atRiskGoals.filter((g) => !alreadyAlertedToday.has(g.id));
   if (toCreate.length === 0) return 0;
 
   await prisma.notification.createMany({
@@ -208,6 +225,7 @@ export async function createGoalRiskAlerts(now: Date = new Date()): Promise<numb
       title: "Meta en riesgo",
       message: `"${g.title}" va por detrás del ritmo necesario para completarse a tiempo.`,
       relatedId: g.id,
+      occurrenceAt: today,
     })),
   });
 
@@ -218,9 +236,14 @@ export async function createGoalRiskAlerts(now: Date = new Date()): Promise<numb
 /**
  * Revisa las tareas del Planificador (todos los usuarios) con `dueDate` fijada, no marcadas
  * "done", cuya fecha límite ya pasó o está a menos de `TASK_DUE_WINDOW_HOURS` — y crea una
- * notificación "task_due" para cada una. Igual que `createGoalRiskAlerts`, no re-crea el aviso
- * mientras ya haya uno sin leer para esa tarea (evita spam cada 5 minutos); si el usuario lo
- * lee y la tarea sigue vencida/pendiente, puede volver a dispararse en el siguiente tick.
+ * notificación "task_due" para cada una. Igual que `createGoalRiskAlerts`, como mucho UNA por
+ * tarea y día natural (UTC), sin importar si la de hoy ya se leyó o no.
+ *
+ * Antes desduplicaba solo por "sin leer": en cuanto el usuario la leía (o abría el panel de
+ * notificaciones, que las marca leídas), el siguiente tick del cron (cada 5 min) volvía a crear
+ * otra si la tarea seguía vencida/pendiente — spam cada 5 minutos. Al desduplicar por día
+ * (occurrenceAt = inicio del día en vez de "sin leer"), la misma tarea como mucho avisa una vez
+ * al día — vuelve a avisar al día siguiente si sigue vencida/pendiente, léase o no la de hoy.
  */
 export async function createTaskDueReminders(now: Date = new Date()): Promise<number> {
   const windowEnd = addHours(now, TASK_DUE_WINDOW_HOURS);
@@ -231,13 +254,14 @@ export async function createTaskDueReminders(now: Date = new Date()): Promise<nu
 
   if (dueSoonTasks.length === 0) return 0;
 
-  const existingUnread = await prisma.notification.findMany({
-    where: { type: "task_due", relatedId: { in: dueSoonTasks.map((t) => t.id) }, read: false },
+  const today = startOfUtcDay(now);
+  const alertedToday = await prisma.notification.findMany({
+    where: { type: "task_due", relatedId: { in: dueSoonTasks.map((t) => t.id) }, occurrenceAt: today },
     select: { relatedId: true },
   });
-  const alreadyAlerted = new Set(existingUnread.map((n) => n.relatedId));
+  const alreadyAlertedToday = new Set(alertedToday.map((n) => n.relatedId));
 
-  const toCreate = dueSoonTasks.filter((t) => !alreadyAlerted.has(t.id));
+  const toCreate = dueSoonTasks.filter((t) => !alreadyAlertedToday.has(t.id));
   if (toCreate.length === 0) return 0;
 
   await prisma.notification.createMany({
@@ -247,6 +271,7 @@ export async function createTaskDueReminders(now: Date = new Date()): Promise<nu
       title: t.dueDate! <= now ? "Tarea vencida" : "Tarea próxima a vencer",
       message: `"${t.title}" vence el ${t.dueDate!.toISOString()}`,
       relatedId: t.id,
+      occurrenceAt: today,
     })),
   });
 

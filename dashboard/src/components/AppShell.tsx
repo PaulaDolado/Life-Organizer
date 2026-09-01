@@ -91,6 +91,12 @@ interface AppShellProps {
 
 const SIDEBAR_COLLAPSED_KEY = "life-organizer:sidebar-collapsed";
 const SIDEBAR_WIDTH_KEY = "life-organizer:sidebar-width";
+// Qué apartados con subapartados (Agenda, Finanzas) tiene el usuario plegados — independiente de
+// SIDEBAR_COLLAPSED_KEY, que esconde el menú entero: esto solo oculta los hijos de un apartado
+// concreto, para poder ver la lista sin que "Planificador"/"Horario"/"Metas de ahorro" ocupen
+// sitio si no se usan. Se guarda como array de `Tab` (JSON) — solo los que tienen `children`
+// llegan a estar aquí, ver toggleSection.
+const NAV_COLLAPSED_SECTIONS_KEY = "life-organizer:nav-collapsed-sections";
 const DEFAULT_SIDEBAR_WIDTH = 288; // w-72, el ancho original
 const MAX_SIDEBAR_WIDTH = 480;
 // Padding horizontal del <aside> (p-8 = 2rem por lado) que hay que sumar al ancho del texto.
@@ -120,6 +126,14 @@ export function AppShell({
   const [confirmingDeletePageId, setConfirmingDeletePageId] = useState<number | null>(null);
   const { data: week } = useFetch(() => api.get<AgendaResponse>(`/agenda/week/${todayIso()}`), []);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+  const [collapsedSections, setCollapsedSections] = useState<Set<Tab>>(() => {
+    try {
+      const raw = localStorage.getItem(NAV_COLLAPSED_SECTIONS_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
     return stored > 0 ? stored : DEFAULT_SIDEBAR_WIDTH;
@@ -135,6 +149,19 @@ export function AppShell({
     setCollapsed((v) => {
       const next = !v;
       localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
+
+  // Pliega/despliega los subapartados de UN item del menú (Agenda, Finanzas) — el propio item
+  // sigue siendo clicable para navegar a su página (ver el botón de abajo), esto solo afecta a
+  // si sus `children` se ven o no.
+  const toggleSection = (key: Tab) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      localStorage.setItem(NAV_COLLAPSED_SECTIONS_KEY, JSON.stringify([...next]));
       return next;
     });
   };
@@ -220,37 +247,58 @@ export function AppShell({
               <GlobalSearch onNavigate={onSearchNavigate} />
 
               <nav className="flex flex-col gap-1">
-                {NAV.map((item) => (
-                  <div key={item.key}>
-                    <button
-                      onClick={() => onTabChange(item.key)}
-                      className={`w-full truncate rounded-lg px-3 py-2 text-left transition-colors ${
-                        activeTab === item.key
-                          ? "bg-primary/10 font-medium text-primary"
-                          : "text-muted-foreground hover:bg-foreground/5"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                    {item.children && (
-                      <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-border pl-3">
-                        {item.children.map((child) => (
+                {NAV.map((item) => {
+                  const sectionCollapsed = collapsedSections.has(item.key);
+                  return (
+                    <div key={item.key}>
+                      <div className="flex items-center">
+                        <button
+                          onClick={() => onTabChange(item.key)}
+                          className={`w-full min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-left transition-colors ${
+                            activeTab === item.key
+                              ? "bg-primary/10 font-medium text-primary"
+                              : "text-muted-foreground hover:bg-foreground/5"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                        {/* Aparte del botón de arriba a propósito: ese navega a la página del
+                            propio apartado (Agenda/Finanzas también son vistas en sí mismas), este
+                            solo pliega/despliega sus subapartados — mezclar los dos gestos en un
+                            único botón haría imposible hacer cada cosa por separado. */}
+                        {item.children && (
                           <button
-                            key={child.key}
-                            onClick={() => onTabChange(child.key)}
-                            className={`w-full truncate rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
-                              activeTab === child.key
-                                ? "bg-primary/10 font-medium text-primary"
-                                : "text-muted-foreground hover:bg-foreground/5"
-                            }`}
+                            type="button"
+                            onClick={() => toggleSection(item.key)}
+                            title={sectionCollapsed ? `Mostrar subapartados de ${item.label}` : `Ocultar subapartados de ${item.label}`}
+                            className="shrink-0 cursor-pointer rounded-lg p-2 text-xs text-muted-foreground transition-transform hover:bg-foreground/5"
                           >
-                            {child.label}
+                            <span className={`inline-block transition-transform ${sectionCollapsed ? "-rotate-90" : ""}`} aria-hidden="true">
+                              ▾
+                            </span>
                           </button>
-                        ))}
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {item.children && !sectionCollapsed && (
+                        <div className="ml-3 mt-1 flex flex-col gap-1 border-l border-border pl-3">
+                          {item.children.map((child) => (
+                            <button
+                              key={child.key}
+                              onClick={() => onTabChange(child.key)}
+                              className={`w-full truncate rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
+                                activeTab === child.key
+                                  ? "bg-primary/10 font-medium text-primary"
+                                  : "text-muted-foreground hover:bg-foreground/5"
+                              }`}
+                            >
+                              {child.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </nav>
 
               <div className="flex flex-col gap-1">

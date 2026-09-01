@@ -211,7 +211,10 @@ describe("notificationService", () => {
       });
     });
 
-    it("no crea una alerta duplicada si ya hay una sin leer para esa meta", async () => {
+    it("no crea una alerta duplicada si ya se avisó HOY, aunque esa alerta ya esté leída", async () => {
+      // A propósito: antes solo desduplicaba por "sin leer", así que en cuanto el usuario la
+      // leía volvía a avisar en el siguiente tick del cron (cada 5 min) — de ahí el spam que
+      // reportó el usuario. Ahora desduplica por día, se lea o no la de hoy.
       const atRiskGoal = {
         id: 1,
         userId: 5,
@@ -229,6 +232,35 @@ describe("notificationService", () => {
 
       expect(created).toBe(0);
       expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("sí crea una alerta nueva si la última fue un día distinto", async () => {
+      const atRiskGoal = {
+        id: 1,
+        userId: 5,
+        title: "Leer 30 días",
+        targetValue: 30,
+        currentValue: 1,
+        completed: false,
+        periodStart: new Date(2026, 0, 1),
+        periodEnd: new Date(2026, 0, 31),
+      };
+      prismaMock.goal.findMany.mockResolvedValue([atRiskGoal]);
+      // Ninguna alerta con occurrenceAt = hoy (el mock de findMany simula que la query filtrada
+      // por el día de hoy no devuelve la de ayer) — como si ya hubiera una de ayer, pero no de hoy.
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createGoalRiskAlerts(now);
+
+      // Se calcula igual que la propia implementación (startOfUtcDay) en vez de un literal
+      // aparte, para que el test no dependa de en qué zona horaria corra la máquina de CI.
+      const expectedDayBucket = new Date(now);
+      expectedDayBucket.setUTCHours(0, 0, 0, 0);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ relatedId: 1, occurrenceAt: expectedDayBucket })],
+      });
     });
 
     it("no crea alertas para metas que van al ritmo esperado", async () => {
@@ -282,7 +314,10 @@ describe("notificationService", () => {
       });
     });
 
-    it("no duplica el aviso si ya hay uno sin leer para esa tarea", async () => {
+    it("no crea un aviso duplicado si ya se avisó HOY, aunque ese aviso ya esté leído", async () => {
+      // A propósito: antes solo desduplicaba por "sin leer", así que en cuanto el usuario lo
+      // leía volvía a avisar en el siguiente tick del cron (cada 5 min) — de ahí el spam que
+      // reportó el usuario. Ahora desduplica por día, se lea o no el de hoy.
       prismaMock.task.findMany.mockResolvedValue([
         { id: 1, userId: 7, title: "Entregar informe", status: "todo", dueDate: new Date("2026-08-27T18:00:00.000Z") },
       ]);
@@ -292,6 +327,28 @@ describe("notificationService", () => {
 
       expect(created).toBe(0);
       expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    });
+
+    it("sí crea un aviso nuevo si el último fue un día distinto", async () => {
+      prismaMock.task.findMany.mockResolvedValue([
+        { id: 1, userId: 7, title: "Entregar informe", status: "todo", dueDate: new Date("2026-08-27T18:00:00.000Z") },
+      ]);
+      // Ninguna notificación con occurrenceAt = hoy (el mock de findMany simula que la query
+      // filtrada por el día de hoy no devuelve la de ayer) — como si ya hubiera una de ayer,
+      // pero no de hoy.
+      prismaMock.notification.findMany.mockResolvedValue([]);
+
+      const created = await notificationService.createTaskDueReminders(now);
+
+      // Se calcula igual que la propia implementación (startOfUtcDay) en vez de un literal
+      // aparte, para que el test no dependa de en qué zona horaria corra la máquina de CI.
+      const expectedDayBucket = new Date(now);
+      expectedDayBucket.setUTCHours(0, 0, 0, 0);
+
+      expect(created).toBe(1);
+      expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ relatedId: 1, occurrenceAt: expectedDayBucket })],
+      });
     });
 
     it("no crea nada si no hay tareas con fecha límite próxima", async () => {
