@@ -27,7 +27,13 @@ export async function processExpiredGoals(
 
     if (goal.autoRenew) {
       const nextPeriodStart = goal.periodEnd;
-      const nextPeriodEnd = defaultPeriodEnd(goal.period as "weekly" | "monthly", nextPeriodStart);
+      // El fin del nuevo periodo se calcula a partir de `now`, no de `nextPeriodStart`: si la
+      // meta lleva mucho tiempo sin procesarse (p.ej. el scheduler estuvo caído varias semanas),
+      // `nextPeriodStart` puede seguir muy en el pasado, y usarlo aquí generaría un periodo que
+      // ya habría expirado en el momento de crearlo — rompiendo la idempotencia (la próxima
+      // pasada volvería a archivar/renovar la meta recién creada). Usando `now` el periodo nuevo
+      // siempre cubre el momento actual.
+      const nextPeriodEnd = defaultPeriodEnd(goal.period as "weekly" | "monthly", now);
 
       await prisma.goal.create({
         data: {

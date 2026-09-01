@@ -40,8 +40,6 @@ model User {
   transactions  Transaction[]
   savingsGoals  SavingsGoal[]
   projects      Project[]
-  hobbies       Hobby[]
-  hobbySessions HobbySession[]
   notifications Notification[]
   tasks         Task[]
   planners      Planner[]
@@ -251,35 +249,6 @@ model ProjectTask {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
-}
-
-model Hobby {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  name        String
-  category    String // "reading", "gaming", "music", "sports", "art"
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sessions HobbySession[]
-
-  @@index([userId])
-}
-
-model HobbySession {
-  id              Int      @id @default(autoincrement())
-  hobbyId         Int
-  userId          Int
-  durationMinutes Int
-  date            DateTime @default(now())
-  notes           String?
-
-  hobby Hobby @relation(fields: [hobbyId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([hobbyId, date])
 }
 
 // Un tablero de planificador con nombre propio (p.ej. "Trabajo", "Personal") — mismo patrón que

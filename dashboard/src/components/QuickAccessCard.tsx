@@ -1,5 +1,14 @@
-import { useState } from "react";
-import { QUICK_ACCESS_APPS, QuickAccessApp, openQuickAccessApp } from "../utils/quickAccessApps";
+import { FormEvent, useState } from "react";
+import {
+  QUICK_ACCESS_APPS,
+  QuickAccessApp,
+  openQuickAccessApp,
+  CustomQuickAccessLink,
+  loadCustomLinks,
+  addCustomLink,
+  removeCustomLink,
+  customLinkToApp,
+} from "../utils/quickAccessApps";
 
 // Solo local: qué apps mostrar es una preferencia de ESTE dispositivo (abrir la app de
 // escritorio solo tiene sentido en el ordenador donde se hace clic), igual que el resto de
@@ -21,6 +30,7 @@ function loadSelectedIds(): string[] {
 
 export function QuickAccessCard() {
   const [selectedIds, setSelectedIds] = useState<string[]>(loadSelectedIds);
+  const [customLinks, setCustomLinks] = useState<CustomQuickAccessLink[]>(loadCustomLinks);
   const [editing, setEditing] = useState(false);
 
   const toggle = (id: string) => {
@@ -29,7 +39,23 @@ export function QuickAccessCard() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   };
 
-  const selectedApps = QUICK_ACCESS_APPS.filter((app) => selectedIds.includes(app.id));
+  // Los enlaces personalizados no pasan por `selectedIds` (eso es solo para mostrar/ocultar del
+  // catálogo fijo) — se añaden ya visibles, y se quitan borrándolos del todo en vez de ocultarlos.
+  const handleAddCustomLink = (input: { label: string; url: string; emoji: string }) => {
+    const link = addCustomLink(input);
+    if (link) setCustomLinks((prev) => [...prev, link]);
+    return link;
+  };
+
+  const handleRemoveCustomLink = (id: string) => {
+    removeCustomLink(id);
+    setCustomLinks((prev) => prev.filter((link) => link.id !== id));
+  };
+
+  const selectedApps = [
+    ...QUICK_ACCESS_APPS.filter((app) => selectedIds.includes(app.id)),
+    ...customLinks.map(customLinkToApp),
+  ];
 
   return (
     <div className="rounded-3xl border border-primary/30 bg-primary/10 p-6">
@@ -58,7 +84,16 @@ export function QuickAccessCard() {
         </div>
       )}
 
-      {editing && <QuickAccessEditDialog selectedIds={selectedIds} onToggle={toggle} onClose={() => setEditing(false)} />}
+      {editing && (
+        <QuickAccessEditDialog
+          selectedIds={selectedIds}
+          onToggle={toggle}
+          customLinks={customLinks}
+          onAddCustomLink={handleAddCustomLink}
+          onRemoveCustomLink={handleRemoveCustomLink}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
@@ -66,14 +101,21 @@ export function QuickAccessCard() {
 // Logo oficial de la marca (ver quickAccessApps.ts) sobre una casilla de su color, en blanco —
 // mismo tratamiento que un icono de acceso directo del sistema operativo. `size` en unidades de
 // Tailwind (size-11 = 2.75rem, size-8 = 2rem), reutilizado en la tarjeta y en el diálogo de
-// selección con dos tamaños distintos.
+// selección con dos tamaños distintos. Los enlaces personalizados no traen `icon` (path de logo de
+// marca), traen `emoji` — se pinta como texto en vez de como <svg>.
 function AppLogo({ app, size }: { app: QuickAccessApp; size: 8 | 11 }) {
   const boxClass = size === 11 ? "size-11 rounded-2xl p-2" : "size-8 rounded-lg p-1.5";
   return (
     <span className={`flex shrink-0 items-center justify-center ${boxClass}`} style={{ backgroundColor: app.color }}>
-      <svg viewBox="0 0 24 24" fill="#fff" role="img" aria-label={app.label}>
-        <path d={app.icon} />
-      </svg>
+      {app.icon ? (
+        <svg viewBox="0 0 24 24" fill="#fff" role="img" aria-label={app.label}>
+          <path d={app.icon} />
+        </svg>
+      ) : (
+        <span className={size === 11 ? "text-lg leading-none" : "text-sm leading-none"} role="img" aria-label={app.label}>
+          {app.emoji}
+        </span>
+      )}
     </span>
   );
 }
@@ -84,10 +126,16 @@ function AppLogo({ app, size }: { app: QuickAccessApp; size: 8 | 11 }) {
 function QuickAccessEditDialog({
   selectedIds,
   onToggle,
+  customLinks,
+  onAddCustomLink,
+  onRemoveCustomLink,
   onClose,
 }: {
   selectedIds: string[];
   onToggle: (id: string) => void;
+  customLinks: CustomQuickAccessLink[];
+  onAddCustomLink: (input: { label: string; url: string; emoji: string }) => CustomQuickAccessLink | null;
+  onRemoveCustomLink: (id: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -101,7 +149,7 @@ function QuickAccessEditDialog({
         </div>
         <p className="mb-4 text-xs text-muted-foreground">Elige qué apps quieres ver como accesos directos en "Hoy".</p>
 
-        <ul className="max-h-80 space-y-1 overflow-y-auto">
+        <ul className="max-h-56 space-y-1 overflow-y-auto">
           {QUICK_ACCESS_APPS.map((app) => (
             <li key={app.id}>
               <label className="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-muted">
@@ -117,7 +165,97 @@ function QuickAccessEditDialog({
             </li>
           ))}
         </ul>
+
+        <div className="my-4 border-t border-border" />
+
+        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">Tus enlaces</p>
+
+        {customLinks.length > 0 && (
+          <ul className="mb-3 max-h-40 space-y-1 overflow-y-auto">
+            {customLinks.map((link) => (
+              <li key={link.id} className="flex items-center gap-3 rounded-xl px-2 py-2">
+                <AppLogo app={customLinkToApp(link)} size={8} />
+                <span className="min-w-0 flex-1 truncate text-sm">{link.label}</span>
+                <button
+                  type="button"
+                  title="Eliminar enlace"
+                  onClick={() => onRemoveCustomLink(link.id)}
+                  className="shrink-0 cursor-pointer rounded p-1 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <AddCustomLinkForm onAdd={onAddCustomLink} />
       </div>
     </div>
+  );
+}
+
+// Formulario mínimo para añadir un enlace propio: nombre, URL (se normaliza en
+// normalizeQuickAccessUrl — admite que el usuario no ponga "https://") e icono, que aquí es un
+// emoji en vez de un logo de marca (no hay subida de imágenes ni CDN de iconos de terceros). Si
+// se deja vacío, el enlace usa la inicial del nombre como icono (ver addCustomLink).
+function AddCustomLinkForm({
+  onAdd,
+}: {
+  onAdd: (input: { label: string; url: string; emoji: string }) => CustomQuickAccessLink | null;
+}) {
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [emoji, setEmoji] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const link = onAdd({ label, url, emoji });
+    if (!link) {
+      setError("Pon un nombre y una URL válida (p. ej. notion.so/mi-pagina).");
+      return;
+    }
+    setLabel("");
+    setUrl("");
+    setEmoji("");
+    setError("");
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3">
+      <div className="flex gap-2">
+        <input
+          value={emoji}
+          onChange={(e) => setEmoji(e.target.value)}
+          placeholder="🔗"
+          maxLength={4}
+          title="Icono (emoji) — opcional"
+          aria-label="Icono (emoji), opcional"
+          className="w-12 shrink-0 rounded-lg border border-border bg-background px-2 py-2 text-center text-sm outline-none focus:border-primary"
+        />
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Nombre"
+          aria-label="Nombre del enlace"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+      </div>
+      <input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="URL (p. ej. notion.so/mi-pagina)"
+        aria-label="URL del enlace"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <button
+        type="submit"
+        className="w-full cursor-pointer rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
+      >
+        + Añadir enlace
+      </button>
+    </form>
   );
 }

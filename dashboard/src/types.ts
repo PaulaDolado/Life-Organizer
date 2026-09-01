@@ -274,30 +274,6 @@ export interface ProjectPage {
   order: number;
 }
 
-export type HobbyCategory = "reading" | "gaming" | "music" | "sports" | "art";
-
-export interface Hobby {
-  id: number;
-  name: string;
-  category: HobbyCategory;
-  description: string | null;
-}
-
-export interface HobbySession {
-  id: number;
-  durationMinutes: number;
-  date: string;
-  notes: string | null;
-}
-
-export interface HobbyAnalytics {
-  hobbyId: number;
-  totalSessions: number;
-  totalMinutes: number;
-  totalHours: number;
-  recentSessions: HobbySession[];
-}
-
 export interface Notification {
   id: number;
   type: "event_reminder" | "goal_at_risk" | "task_due";
@@ -345,7 +321,7 @@ export interface IcsImportResult {
 // Páginas personalizadas ("+ Nueva página" en el menú lateral, ver AppShell/CreatePageModal).
 // Cada `template` determina la forma de `content` — el dashboard interpreta cada una con su
 // propio componente (ver CustomPageView).
-export type CustomPageTemplate = "nota" | "kanban" | "finanzas" | "proyectos" | "objetivos" | "agenda" | "hoy";
+export type CustomPageTemplate = "nota" | "kanban" | "galeria" | "finanzas" | "proyectos" | "objetivos" | "agenda" | "hoy";
 
 // Fila devuelta por GET /custom-pages (lista para el menú) — sin `content`, que solo llega en el
 // detalle (GET /custom-pages/:id) para no cargar el JSON completo de cada página solo para pintar
@@ -387,6 +363,17 @@ export interface KanbanColumn {
   cards: KanbanCard[];
 }
 
+// Una entrada de la Galería (ver GalleryTemplate en CustomPagePage): foto y/o texto libre, ambos
+// opcionales — puede ser solo una foto, solo una nota, o las dos cosas. `imageData` es una data
+// URL embebida (mismo patrón que KanbanCard.image), no una fila propia: vive dentro del JSON de
+// CustomPage.content, así que "id" es un uuid generado en el cliente (ver newId), no un id de fila.
+export interface GalleryEntry {
+  id: string;
+  title?: string;
+  text?: string;
+  imageData?: string | null;
+}
+
 export interface FinanceEntry {
   id: string;
   type: "income" | "expense";
@@ -421,6 +408,7 @@ export interface CustomPageContentMap {
   // `fieldDefs` es opcional (páginas creadas antes de esta función no lo tienen) — tratar como
   // `?? []` al leerlo, ver KanbanTemplate.
   kanban: { columns: KanbanColumn[]; fieldDefs?: CustomFieldDef[] };
+  galeria: { items: GalleryEntry[] };
   finanzas: { entries: FinanceEntry[] };
   proyectos: { items: ChecklistItem[] };
   objetivos: { goals: SimpleGoal[] };

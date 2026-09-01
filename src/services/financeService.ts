@@ -179,9 +179,9 @@ interface SavingsGoalInput {
   deadline?: string | Date | null;
 }
 
-// El dinero asignado a una meta de ahorro se registra como `expense` (sale de tus ingresos
-// disponibles, ver contributeToSavingsGoal más abajo) y retirarlo como `income` (vuelve a estar
-// disponible) — de ahí que aquí sea expense - income, al revés de lo que parece a primera vista.
+// El dinero asignado a una meta de ahorro se registra como `income` (ver contributeToSavingsGoal
+// más abajo) y retirarlo/corregirlo como `expense` — de ahí que el progreso sea income - expense
+// de esa categoría.
 async function computeSavingsProgress(userId: number, category: string) {
   const [incomeAgg, expenseAgg] = await Promise.all([
     prisma.transaction.aggregate({
@@ -193,7 +193,7 @@ async function computeSavingsProgress(userId: number, category: string) {
       _sum: { amount: true },
     }),
   ]);
-  return Math.max(0, toNumber(expenseAgg._sum.amount) - toNumber(incomeAgg._sum.amount));
+  return Math.max(0, toNumber(incomeAgg._sum.amount) - toNumber(expenseAgg._sum.amount));
 }
 
 export async function listSavingsGoals(userId: number, filters: { type?: string } = {}) {
@@ -214,8 +214,8 @@ export async function listSavingsGoals(userId: number, filters: { type?: string 
   for (const g of grouped) {
     const amount = toNumber(g._sum.amount);
     const current = netByCategory.get(g.category) ?? 0;
-    // Mismo criterio que computeSavingsProgress: expense = aportado, income = retirado.
-    netByCategory.set(g.category, current + (g.type === "expense" ? amount : -amount));
+    // Mismo criterio que computeSavingsProgress: income = aportado, expense = retirado.
+    netByCategory.set(g.category, current + (g.type === "income" ? amount : -amount));
   }
 
   return goals.map((goal) => {
@@ -260,11 +260,10 @@ export async function deleteSavingsGoal(userId: number, savingsGoalId: number) {
 /**
  * "Casilla" clicada en el dashboard: cada clic representa asignar (o retirar) un múltiplo de
  * `stepAmount` a la meta. No se guarda un contador aparte — se traduce en una transacción real
- * (expense si `amount` es positivo: ese dinero sale de tus ingresos disponibles y pasa a la
- * meta; income si es negativo: al deshacer una casilla, vuelve a estar disponible) etiquetada
- * con la categoría de la meta, así el balance mensual/anual y el progreso de la meta se
- * mantienen consistentes con la misma fuente de verdad (`Transaction`), sin un segundo lugar
- * donde el dinero "vive".
+ * (income si `amount` es positivo: aportas a la meta; expense si es negativo: al deshacer una
+ * casilla, retiras/corriges el aporte) etiquetada con la categoría de la meta, así el balance
+ * mensual/anual y el progreso de la meta se mantienen consistentes con la misma fuente de
+ * verdad (`Transaction`), sin un segundo lugar donde el dinero "vive".
  */
 export async function contributeToSavingsGoal(userId: number, savingsGoalId: number, amount: number) {
   const goal = await findOwnedSavingsGoal(userId, savingsGoalId);
@@ -272,7 +271,7 @@ export async function contributeToSavingsGoal(userId: number, savingsGoalId: num
   await prisma.transaction.create({
     data: {
       userId,
-      type: amount > 0 ? "expense" : "income",
+      type: amount > 0 ? "income" : "expense",
       amount: Math.abs(amount),
       category: goal.category,
       description: `Aporte a meta de ahorro: ${goal.name}`,

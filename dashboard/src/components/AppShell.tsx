@@ -16,8 +16,7 @@ export type StaticTab =
   | "metas"
   | "finanzas"
   | "finanzas-ahorro"
-  | "proyectos"
-  | "hobbies";
+  | "proyectos";
 // Pestaña de una página personalizada ("+ Nueva página", ver CreatePageModal más abajo) —
 // codifica el id directamente en el string en vez de llevar un id de pestaña + un id de página
 // por separado, así activeTab (un simple useState en DashboardPage) sigue siendo la única fuente
@@ -67,7 +66,6 @@ const NAV: NavItem[] = [
     children: [{ key: "finanzas-ahorro", label: "Metas de ahorro" }],
   },
   { key: "proyectos", label: "Proyectos" },
-  { key: "hobbies", label: "Hobbies" },
 ];
 
 // Nav aplanado — para el menú horizontal en móvil, donde anidar no tiene mucho sitio.
@@ -402,21 +400,25 @@ export function AppShell({
             real de un clip de papel (no un dibujo propio: los intentos en SVG no acababan de
             parecerse). Con el menú desplegado se ve clipClosed.png centrado sobre el borde real
             de la barra lateral (como sujetándola); colapsado no hay "hoja" que sujetar, así que
-            se ve clipOpen.png suelto, pegado al borde izquierdo. `fixed` (no `sticky` con margen
-            negativo) a propósito: un margen negativo tan grande sobre un elemento dentro del
-            flex de la barra lateral encogía el ancho de toda la fila; al sacarlo del flujo con
-            `fixed`, su posición no afecta al del resto. */}
+            se ve clipOpen.png girado 90° (vertical, como si sujetara el borde izquierdo del
+            contenido en vez del de la barra lateral que ya no está) pegado al borde izquierdo.
+            En ambos casos `top` coincide con el alto real del título de la página (font-serif
+            text-4xl dentro de `p-6 lg:p-12`, ver PageHeader) para que el clip quede a su altura,
+            no pegado arriba del todo. `fixed` (no `sticky` con margen negativo) a propósito: un
+            margen negativo tan grande sobre un elemento dentro del flex de la barra lateral
+            encogía el ancho de toda la fila; al sacarlo del flujo con `fixed`, su posición no
+            afecta al del resto. */}
         <button
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Mostrar menú" : "Ocultar menú"}
           title={collapsed ? "Mostrar menú" : "Ocultar menú"}
-          style={{ left: collapsed ? 16 : sidebarWidth - 14, top: 40 }}
+          style={{ left: collapsed ? 16 : sidebarWidth - 14, top: 68 }}
           className={`fixed z-20 -translate-y-1/2 cursor-pointer bg-transparent transition-transform hover:scale-105 ${
             collapsed ? "" : "-translate-x-1/2"
           }`}
         >
           {collapsed ? (
-            <img src={clipOpenUrl} alt="" width={56} className="drop-shadow-md" />
+            <img src={clipOpenUrl} alt="" width={56} className="rotate-90 drop-shadow-md" />
           ) : (
             <img src={clipClosedUrl} alt="" width={CLIP_CLOSED_WIDTH} className="drop-shadow-md" />
           )}
@@ -466,7 +468,12 @@ export function AppShell({
             Salir
           </button>
         </nav>
-        <main className="p-6 lg:p-12">{children}</main>
+        {/* Con el menú colapsado el clip queda fijo sobre el borde izquierdo (ver el botón de
+            arriba) y por defecto el título quedaba pegado a él (mismo padding que con el menú
+            abierto) — con el menú colapsado se sube el padding izquierdo (lg:pl-24 en vez de
+            lg:pl-12) para dejar aire entre el clip y el título de la página. Solo en `lg:` porque
+            el clip solo existe en el layout de escritorio (ver "hidden shrink-0 lg:flex" arriba). */}
+        <main className={`p-6 lg:pt-12 lg:pr-12 lg:pb-12 ${collapsed ? "lg:pl-24" : "lg:pl-12"}`}>{children}</main>
       </div>
 
       {/* Fija en la esquina inferior derecha, fuera del menú — así se ve en todas las páginas

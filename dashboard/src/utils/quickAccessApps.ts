@@ -8,13 +8,17 @@
 export interface QuickAccessApp {
   id: string;
   label: string;
-  icon: string;
   color: string;
   // Esquema de URI que abre la app de escritorio si está instalada (ver openQuickAccessApp). Las
   // apps que no tienen un esquema general de "abrir la app" (GitHub, GitLab, Gmail, YouTube,
   // Calendar, Drive son solo web o no documentan uno) se quedan sin `appUrl` y van directas a la web.
   appUrl?: string;
   webUrl: string;
+  // Mutuamente excluyentes: las apps del catálogo fijo traen `icon` (path de un logo de marca);
+  // los enlaces personalizados del usuario (ver más abajo) traen `emoji` en su lugar, porque no
+  // hay logo de marca conocido para una URL cualquiera.
+  icon?: string;
+  emoji?: string;
 }
 
 export const QUICK_ACCESS_APPS: QuickAccessApp[] = [
@@ -117,6 +121,92 @@ export const QUICK_ACCESS_APPS: QuickAccessApp[] = [
     icon: "M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z",
   },
 ];
+
+// --- Enlaces personalizados -------------------------------------------------------------------
+// Además del catálogo fijo de arriba, el usuario puede añadir sus propios accesos directos con
+// cualquier URL y un emoji como icono (no hay subida de imágenes ni un CDN de iconos de terceros
+// — mismo criterio de "autocontenida" que el resto de este catálogo). Se guardan en localStorage,
+// igual que `selectedIds` en QuickAccessCard: es una preferencia de este dispositivo, no del
+// backend.
+const CUSTOM_LINKS_STORAGE_KEY = "life-organizer:quick-access-custom";
+
+export interface CustomQuickAccessLink {
+  id: string;
+  label: string;
+  url: string;
+  emoji: string;
+}
+
+export function loadCustomLinks(): CustomQuickAccessLink[] {
+  const raw = localStorage.getItem(CUSTOM_LINKS_STORAGE_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomLinks(links: CustomQuickAccessLink[]): void {
+  localStorage.setItem(CUSTOM_LINKS_STORAGE_KEY, JSON.stringify(links));
+}
+
+// Colores fijos rotando por hash del id (no por posición en la lista) para que el color de cada
+// enlace no cambie al borrar o añadir otros — mismo efecto visual que los colores de marca del
+// catálogo fijo, sin tener que pedirle también un color al usuario además del icono.
+const CUSTOM_LINK_COLORS = ["#6366F1", "#F59E0B", "#10B981", "#EC4899", "#0EA5E9", "#F97316", "#84CC16", "#A855F7"];
+
+function colorForCustomLink(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return CUSTOM_LINK_COLORS[hash % CUSTOM_LINK_COLORS.length];
+}
+
+// Antepone https:// si el usuario no puso esquema (p.ej. escribe "notion.so/mi-pagina"), y
+// rechaza cualquier esquema que no sea http/https (p.ej. "javascript:") ya que esto se abre
+// directamente con window.open/location.href — ver openQuickAccessApp.
+export function normalizeQuickAccessUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const withProtocol = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+// Devuelve null si el nombre o la URL no son válidos (el formulario lo interpreta como "corrige
+// los datos"), o el enlace ya guardado si todo fue bien.
+export function addCustomLink(input: { label: string; url: string; emoji: string }): CustomQuickAccessLink | null {
+  const label = input.label.trim();
+  const url = normalizeQuickAccessUrl(input.url);
+  if (!label || !url) return null;
+  // Sin emoji, la inicial del nombre en mayúscula funciona como icono por defecto (mismo recurso
+  // que un avatar con iniciales) en vez de dejar la casilla vacía.
+  const emoji = input.emoji.trim() || label.charAt(0).toUpperCase();
+  const link: CustomQuickAccessLink = {
+    id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label,
+    url,
+    emoji,
+  };
+  saveCustomLinks([...loadCustomLinks(), link]);
+  return link;
+}
+
+export function removeCustomLink(id: string): void {
+  saveCustomLinks(loadCustomLinks().filter((link) => link.id !== id));
+}
+
+// Adapta un enlace personalizado a la misma forma que las apps del catálogo fijo, para poder
+// reutilizar AppLogo y openQuickAccessApp sin duplicar nada (ver QuickAccessCard).
+export function customLinkToApp(link: CustomQuickAccessLink): QuickAccessApp {
+  return { id: link.id, label: link.label, color: colorForCustomLink(link.id), webUrl: link.url, emoji: link.emoji };
+}
 
 // No existe una API de navegador para "¿esta app está instalada?" (por privacidad, ningún
 // navegador la expone) — así que se usa el mismo truco indirecto que sitios como Slack o Spotify:

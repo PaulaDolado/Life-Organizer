@@ -9,7 +9,7 @@ const EPOCH = new Date(0);
 
 /**
  * Sincronización offline (Fase 1 — ver plan): Event/EventException, Task/Subtask, Note,
- * Habit/HabitLog. El resto de módulos (Finanzas, Proyectos, Hobbies, Objetivos,
+ * Habit/HabitLog. El resto de módulos (Finanzas, Proyectos, Galería, Objetivos,
  * Notificaciones) no sincroniza con el móvil todavía.
  *
  * Pull y push son deliberadamente EXPLÍCITOS por tipo (no un bucle genérico sobre los 7

@@ -19,6 +19,8 @@ function defaultContent(template: string): Prisma.InputJsonValue {
           { id: crypto.randomUUID(), title: "Hecho", cards: [] },
         ],
       };
+    case "galeria":
+      return { items: [] };
     case "finanzas":
       return { entries: [] };
     case "proyectos":

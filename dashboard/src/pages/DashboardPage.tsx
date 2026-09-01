@@ -10,7 +10,6 @@ import { MetasPage } from "./MetasPage";
 import { FinanzasPage } from "./FinanzasPage";
 import { MetasAhorroPage } from "./MetasAhorroPage";
 import { ProyectosPage } from "./ProyectosPage";
-import { HobbiesPage } from "./HobbiesPage";
 import { CustomPagePage } from "./CustomPagePage";
 import { CustomPageSummary, CustomPageTemplate } from "../types";
 
@@ -36,7 +35,10 @@ export function DashboardPage() {
 
   const createCustomPage = async (title: string, template: CustomPageTemplate) => {
     const created = await api.post<CustomPageSummary>("/custom-pages", { title, template });
-    reloadCustomPages();
+    // Esperar a que la lista esté actualizada ANTES de cambiar de pestaña — si no, "Tus páginas"
+    // en la barra lateral podía tardar un instante en mostrar la nueva página (la propia vista sí
+    // aparecía, pero el menú se quedaba con la lista vieja hasta el siguiente re-render).
+    await reloadCustomPages();
     setActiveTab(customPageTab(created.id));
   };
 
@@ -84,7 +86,17 @@ export function DashboardPage() {
       onDeleteCustomPage={deleteCustomPage}
     >
       {activeCustomPageId !== null && (
-        <CustomPagePage pageId={activeCustomPageId} onRenamed={reloadCustomPages} onDeleted={handleCustomPageDeleted} />
+        // `key`: sin esto, pasar de una página personalizada a OTRA (p.ej. justo tras crear una
+        // nueva mientras ya se estaba viendo otra) no desmonta el componente — React lo reutiliza
+        // con un `pageId` distinto, y hasta que su useEffect (keyed en `page`, no en `pageId`) no
+        // termina de resincronizar título/subtítulo/contenido puede verse en blanco. Con `key` sí
+        // se desmonta y se vuelve a montar desde cero por cada página, sin ese hueco intermedio.
+        <CustomPagePage
+          key={activeCustomPageId}
+          pageId={activeCustomPageId}
+          onRenamed={reloadCustomPages}
+          onDeleted={handleCustomPageDeleted}
+        />
       )}
       {activeTab === "hoy" && <HoyPage onNavigate={navigate} />}
       {activeTab === "agenda" && (
@@ -109,7 +121,6 @@ export function DashboardPage() {
       {activeTab === "proyectos" && (
         <ProyectosPage focusProjectId={focus?.type === "project" ? focus.id : undefined} onFocusHandled={clearFocus} />
       )}
-      {activeTab === "hobbies" && <HobbiesPage />}
     </AppShell>
   );
 }

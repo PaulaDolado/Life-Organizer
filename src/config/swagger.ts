@@ -8,7 +8,7 @@ const options: swaggerJsdoc.Options = {
       title: "Tidely API",
       version: "1.0.0",
       description:
-        "API REST de organización personal: Agenda, Metas, Finanzas, Proyectos y Hobbies.",
+        "API REST de organización personal: Agenda, Metas, Finanzas, Proyectos y Galería.",
     },
     servers: [{ url: `http://localhost:${env.port}`, description: "Local" }],
     components: {

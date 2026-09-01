@@ -13,6 +13,7 @@ export interface CustomPageTemplateMeta {
 export const CUSTOM_PAGE_TEMPLATES: CustomPageTemplateMeta[] = [
   { key: "nota", label: "Nota en blanco", description: "Como una libreta: solo texto para escribir libremente.", icon: "📝" },
   { key: "kanban", label: "Kanban", description: "Tablero con columnas y tarjetas.", icon: "🗂️" },
+  { key: "galeria", label: "Galería", description: "Fotos y notas en collage, como una pared de marcos.", icon: "🖼️" },
   { key: "finanzas", label: "Finanzas", description: "Ingresos y gastos propios, con balance.", icon: "💰" },
   { key: "proyectos", label: "Proyectos", description: "Checklist de tareas para seguir algo.", icon: "📁" },
   { key: "objetivos", label: "Objetivos", description: "Metas con barra de progreso.", icon: "🎯" },

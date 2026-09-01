@@ -1,6 +1,6 @@
 # Tidely API
 
-API REST de organización personal integral: **Agenda · Metas · Finanzas · Proyectos · Hobbies**, con notificaciones automáticas y eventos recurrentes de verdad.
+API REST de organización personal integral: **Agenda · Metas · Finanzas · Proyectos**, con notificaciones automáticas, eventos recurrentes de verdad y páginas personalizadas (notas, kanban, galería...).
 
 > Estado: **Sprints 1-5 completos** + hardening post-sprint (notificaciones, recurrencia real, paginación, timezone). Los 5 módulos de negocio + notificaciones están implementados, testeados (189 tests unitarios + integración) y endurecidos.
 >
@@ -77,7 +77,7 @@ Detalle completo (qué cubre cada carpeta, bugs reales encontrados por los tests
 - [x] **Sprint 4** — Tests unitarios, ESLint, rate limiting, optimización de queries N+1
 - [x] **Sprint 5** — CI/CD, deployment config (Railway/Render), dashboard demo en React
 - [x] **Post-Sprint-5** — Notificaciones (recordatorios + alertas), eventos recurrentes reales, paginación en todos los listados, timezone del usuario aplicada en Agenda, expiración/auto-renovación de metas, documentación separada en archivos dedicados
-- [x] **Rediseño del dashboard** — nueva identidad visual (paleta oklch, Tailwind v4, Outfit + Instrument Serif) adaptada de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23), con las 5 páginas (Agenda, Metas, Finanzas, Proyectos, Hobbies) más notificaciones — ver [dashboard/README.md](dashboard/README.md#origen-del-diseño-y-qué-se-adaptó) para qué se adoptó tal cual y qué se adaptó a nuestra API
+- [x] **Rediseño del dashboard** — nueva identidad visual (paleta oklch, Tailwind v4, Outfit + Instrument Serif) adaptada de [difarmed/life-weaver-pro-23](https://github.com/difarmed/life-weaver-pro-23), con las 4 páginas (Agenda, Metas, Finanzas, Proyectos) más notificaciones — ver [dashboard/README.md](dashboard/README.md#origen-del-diseño-y-qué-se-adaptó) para qué se adoptó tal cual y qué se adaptó a nuestra API
 - [x] **Sync offline + app móvil (Fase 1)** — `/sync/pull` y `/sync/push` (tombstones para borrados, last-write-wins para conflictos) cubriendo Eventos, Tareas/Subtareas, Notas y Hábitos; app Expo/React Native nueva en [mobile/](mobile/README.md) con SQLite local y una pantalla "Hoy" que funciona sin conexión — ver [API.md](API.md#sincronización-sync) para el contrato y qué módulos quedan fuera de esta fase
 - [x] **Integración con Google Calendar (solo importación)** — conecta tu cuenta con OAuth2, importa eventos del calendario `primary` (± 30/180 días) y los mantiene al día con un cron cada 30 min además de un botón de "Sincronizar ahora" — ver [API.md](API.md#integraciones--google-calendar) y la sección de Setup de abajo para configurar las credenciales
 

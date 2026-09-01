@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { useFetch } from "../hooks/useFetch";
 import { Loading, ErrorMessage, EmptyState } from "../components/Feedback";
@@ -6,6 +6,7 @@ import { RichTextEditor } from "../components/RichTextEditor";
 import { CustomFieldInput, formatCustomFieldValue } from "../components/CustomFieldInput";
 import { newId } from "../utils/id";
 import { CUSTOM_PAGE_TEMPLATE_META } from "../utils/customPageTemplates";
+import { placeholderColorFor, frameHeightFor } from "../utils/galleryPalette";
 import {
   AgendaNote,
   ChecklistItem,
@@ -16,6 +17,7 @@ import {
   CustomPageContentMap,
   CustomPageTemplate,
   FinanceEntry,
+  GalleryEntry,
   KanbanCard,
   KanbanColumn,
   SimpleGoal,
@@ -56,6 +58,10 @@ export function CustomPagePage({
   // que en PlanificadorPage), tabla es una alternativa que lee/escribe el mismo `columns`.
   const [kanbanView, setKanbanView] = useState<"kanban" | "table">("kanban");
   const [managingFields, setManagingFields] = useState(false);
+  // Solo se usa cuando template === "galeria" — qué entrada tiene abierto su diálogo de detalle
+  // ahora mismo (null = ninguna). Vive aquí (no dentro de GalleryTemplate) porque "+ Nueva
+  // entrada" está en la cabecera de la página, igual que "+ Propiedad"/"+ Columna" de kanban.
+  const [openGalleryId, setOpenGalleryId] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Último subtítulo que se sabe guardado en el servidor — ver saveSubtitle: comparar contra
   // esto (no contra `page.subtitle`, que no se vuelve a pedir tras cada guardado) es lo que evita
@@ -92,6 +98,15 @@ export function CustomPagePage({
   const addFieldDef = (name: string, type: CustomFieldType, options?: string[]) => {
     const current = content as CustomPageContentMap["kanban"];
     updateContent({ ...current, fieldDefs: [...(current.fieldDefs ?? []), { id: newId(), name, type, options }] });
+  };
+
+  // Crea una entrada vacía (sin foto ni texto) y abre su diálogo al instante, para que el
+  // usuario añada la foto/texto ahí mismo — igual flujo que "+ Nueva tarea" en el Planificador.
+  const addGalleryItem = () => {
+    const current = content as CustomPageContentMap["galeria"];
+    const entry: GalleryEntry = { id: newId() };
+    updateContent({ items: [entry, ...current.items] });
+    setOpenGalleryId(entry.id);
   };
 
   // El título se guarda al perder el foco (no en cada tecla), igual que el de una página de
@@ -218,6 +233,14 @@ export function CustomPagePage({
               />
             </>
           )}
+
+          {/* Igual criterio que "+ Columna" en kanban: crear va en la cabecera de la página, no
+              dentro del propio collage. */}
+          {page.template === "galeria" && (
+            <button type="button" onClick={addGalleryItem} className="btn-dark whitespace-nowrap">
+              + Nueva entrada
+            </button>
+          )}
         </div>
       </div>
 
@@ -252,6 +275,14 @@ export function CustomPagePage({
             onAddField={addFieldDef}
           />
         ))}
+      {page.template === "galeria" && (
+        <GalleryTemplate
+          items={(content as CustomPageContentMap["galeria"]).items}
+          onChange={(items) => updateContent({ items })}
+          openId={openGalleryId}
+          onOpenChange={setOpenGalleryId}
+        />
+      )}
       {page.template === "finanzas" && (
         <FinanceTemplate
           entries={(content as CustomPageContentMap["finanzas"]).entries}
@@ -1611,6 +1642,263 @@ function KanbanCardDialog({
             {confirmingDelete ? "¿Confirmar eliminar?" : "Eliminar tarjeta"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Galería — collage de fotos y notas en columnas (estilo "pared de marcos"), como el kanban de
+// arriba todo vive en `content.galeria.items` (JSON de cliente, sin API propia): "id" es un uuid
+// generado en el cliente (ver newId), y crear/editar/borrar es sustituir el array entero vía
+// `onChange`, que CustomPagePage debounza igual que el resto de plantillas.
+// ---------------------------------------------------------------------------------------------
+function GalleryTemplate({
+  items,
+  onChange,
+  openId,
+  onOpenChange,
+}: {
+  items: GalleryEntry[];
+  onChange: (items: GalleryEntry[]) => void;
+  openId: string | null;
+  onOpenChange: (id: string | null) => void;
+}) {
+  const openItem = items.find((i) => i.id === openId) ?? null;
+
+  const updateItem = (id: string, patch: Partial<GalleryEntry>) => {
+    onChange(items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  };
+
+  const removeItem = (id: string) => {
+    onChange(items.filter((i) => i.id !== id));
+    onOpenChange(null);
+  };
+
+  if (items.length === 0) {
+    return <EmptyState message="Todavía no hay nada en esta galería. Añade tu primera entrada." />;
+  }
+
+  return (
+    <>
+      {/* `columns-*` (no grid) a propósito: cada tarjeta cae en la columna más corta y con su
+          propia altura (ver frameHeightFor), así que las fotos quedan a "distintas posiciones"
+          como una pared de marcos, sin JS de más. */}
+      <div className="columns-2 gap-4 sm:columns-3 lg:columns-4">
+        {items.map((item) => (
+          <GalleryTile key={item.id} item={item} onClick={() => onOpenChange(item.id)} />
+        ))}
+      </div>
+
+      {openItem && (
+        <GalleryItemDialog
+          item={openItem}
+          onClose={() => onOpenChange(null)}
+          onChange={(patch) => updateItem(openItem.id, patch)}
+          onRemove={() => removeItem(openItem.id)}
+        />
+      )}
+    </>
+  );
+}
+
+function GalleryTile({ item, onClick }: { item: GalleryEntry; onClick: () => void }) {
+  const heightClass = frameHeightFor(item.id);
+  const hasText = Boolean(item.title || item.text);
+
+  return (
+    <button
+      onClick={onClick}
+      title={item.title || "Abrir entrada"}
+      className={`group relative mb-4 block w-full cursor-pointer overflow-hidden rounded-2xl text-left shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 ${heightClass}`}
+    >
+      {item.imageData ? (
+        <>
+          <img src={item.imageData} alt={item.title ?? ""} className="size-full object-cover" />
+          {item.title && (
+            <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-foreground/70 to-transparent px-3 pb-2 pt-6 text-sm font-medium text-background opacity-0 transition-opacity group-hover:opacity-100">
+              {item.title}
+            </span>
+          )}
+        </>
+      ) : (
+        <div className={`flex size-full flex-col justify-end gap-1 p-4 ${placeholderColorFor(item.id)}`}>
+          {hasText ? (
+            <>
+              {item.title && <p className="truncate font-serif text-lg">{item.title}</p>}
+              {item.text && <p className="line-clamp-4 text-xs text-muted-foreground">{item.text}</p>}
+            </>
+          ) : (
+            <span className="self-center text-3xl opacity-30" aria-hidden="true">
+              🖼️
+            </span>
+          )}
+        </div>
+      )}
+    </button>
+  );
+}
+
+function GalleryItemDialog({
+  item,
+  onClose,
+  onChange,
+  onRemove,
+}: {
+  item: GalleryEntry;
+  onClose: () => void;
+  onChange: (patch: Partial<GalleryEntry>) => void;
+  onRemove: () => void;
+}) {
+  const [title, setTitle] = useState(item.title ?? "");
+  const [text, setText] = useState(item.text ?? "");
+  const [fullscreen, setFullscreen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  // Confirmación "clic otra vez" (no window.confirm) — mismo patrón que "Eliminar tarjeta" de
+  // KanbanCardDialog / "Eliminar página" de arriba.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      window.alert("La imagen es demasiado grande (máx. 3 MB).");
+      return;
+    }
+    setUploading(true);
+    try {
+      onChange({ imageData: await readImageFile(file) });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-foreground/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={
+          fullscreen
+            ? "flex h-full w-full flex-col overflow-y-auto rounded-none bg-card p-6 sm:p-10"
+            : "flex max-h-[90vh] w-full max-w-3xl flex-col overflow-y-auto rounded-3xl bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8"
+        }
+      >
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <input
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              onChange({ title: e.target.value || undefined });
+            }}
+            placeholder="Título (opcional)"
+            className="min-w-0 flex-1 border-b border-transparent bg-transparent font-serif text-2xl outline-none focus:border-primary"
+          />
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setFullscreen((v) => !v)}
+              title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+              className="cursor-pointer rounded-lg p-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {fullscreen ? "⤡" : "⛶"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              title="Cerrar"
+              className="cursor-pointer rounded-lg p-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div className={fullscreen ? "grid flex-1 gap-6 lg:grid-cols-[1fr_1.2fr]" : "space-y-4"}>
+          <div className={fullscreen ? "flex flex-col gap-2" : ""}>
+            {item.imageData ? (
+              <div className="relative overflow-hidden rounded-2xl">
+                <img
+                  src={item.imageData}
+                  alt={title}
+                  className={fullscreen ? "max-h-[60vh] w-full object-contain" : "max-h-80 w-full object-cover"}
+                />
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="cursor-pointer rounded-lg bg-background/80 px-2 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-background"
+                  >
+                    Cambiar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ imageData: null })}
+                    className="cursor-pointer rounded-lg bg-background/80 px-2 py-1 text-xs font-medium text-destructive shadow-sm hover:bg-background"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className={`flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/30 text-sm text-muted-foreground hover:bg-primary/5 ${fullscreen ? "h-64" : "h-40"}`}
+              >
+                <span className="text-2xl" aria-hidden="true">
+                  🖼️
+                </span>
+                {uploading ? "Subiendo..." : "Añadir foto"}
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                handleImageFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          <textarea
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              onChange({ text: e.target.value || undefined });
+            }}
+            placeholder="Escribe lo que quieras sobre esta entrada..."
+            className={`field-input w-full resize-y text-sm normal-case tracking-normal ${fullscreen ? "h-full min-h-[50vh] flex-1" : "min-h-[10rem]"}`}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirmingDelete) {
+              setConfirmingDelete(true);
+              return;
+            }
+            onRemove();
+          }}
+          onBlur={() => setConfirmingDelete(false)}
+          className={`mt-4 cursor-pointer self-start whitespace-nowrap rounded-full px-3 py-1.5 text-xs transition-colors ${
+            confirmingDelete
+              ? "bg-destructive text-destructive-foreground"
+              : "text-muted-foreground hover:text-destructive"
+          }`}
+        >
+          {confirmingDelete ? "¿Confirmar eliminar?" : "Eliminar entrada"}
+        </button>
       </div>
     </div>
   );

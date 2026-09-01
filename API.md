@@ -6,7 +6,7 @@ Todas las rutas salvo `/auth/register`, `/auth/login`, `/auth/refresh` y `/auth/
 
 ## Paginación
 
-Todos los listados (`/goals`, `/projects`, `/hobbies`, `/hobbies/category/:category`, `/agenda/day`, `/agenda/week`, `/finance/transactions`, `/notifications`) aceptan `?page=` (default 1) y `?limit=` (default 20, excepto agenda que usa 50 — el tamaño natural de "eventos en un día/semana"). La respuesta siempre incluye:
+Todos los listados (`/goals`, `/projects`, `/agenda/day`, `/agenda/week`, `/finance/transactions`, `/notifications`) aceptan `?page=` (default 1) y `?limit=` (default 20, excepto agenda que usa 50 — el tamaño natural de "eventos en un día/semana"). La respuesta siempre incluye:
 
 ```json
 { "pagination": { "page": 1, "limit": 20, "total": 42, "pages": 3 } }
@@ -113,8 +113,8 @@ conexión.
 
 **Alcance (Fase 1)**: `Event` + `EventException`, `Task` + `Subtask`, `Note`, `Habit` +
 `HabitLog`. **No sincronizan** (solo web, por ahora): Metas (`Goal`/`GoalProgress`), Finanzas
-(`Transaction`/`SavingsGoal`), Proyectos (`Project`/`ProjectTask`/`ProjectPage`), Hobbies
-(`Hobby`/`HobbySession`), Notificaciones.
+(`Transaction`/`SavingsGoal`), Proyectos (`Project`/`ProjectTask`/`ProjectPage`), Páginas
+personalizadas (`CustomPage`, incluida la plantilla "galeria"), Notificaciones.
 
 **Pull** — respuesta `{ serverTime, events, eventExceptions, tasks, subtasks, notes, habits, habitLogs, tombstones }`.
 `serverTime` es el instante en que se hizo la consulta (no el `updatedAt` máximo de las filas
@@ -198,18 +198,6 @@ Una meta que pasa su `periodEnd` sin completarse queda `expired=true` automátic
 | DELETE | `/planner/tasks/:id/subtasks/:subtaskId` | JWT | Elimina una subtarea |
 
 `projectId` es opcional: vincula la tarea a un `Project` existente del mismo usuario (404/403 si no lo es). El recordatorio de `dueDate` lo genera el scheduler de notificaciones, no un endpoint (ver más abajo).
-
-## Hobbies
-
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| GET | `/hobbies` | JWT | `?page=`, `?limit=` |
-| POST | `/hobbies` | JWT | `category`: `reading`\|`gaming`\|`music`\|`sports`\|`art` |
-| PUT | `/hobbies/:id` | JWT | Edita |
-| DELETE | `/hobbies/:id` | JWT | Elimina |
-| POST | `/hobbies/:id/sessions` | JWT | Registra sesión (duración, fecha, notas) |
-| GET | `/hobbies/:id/analytics` | JWT | Horas totales, nº sesiones, últimas 5 |
-| GET | `/hobbies/category/:category` | JWT | Filtra por categoría (`?page=`, `?limit=`) |
 
 ## Notificaciones (Notifications)
 

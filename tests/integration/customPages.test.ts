@@ -67,6 +67,13 @@ describe("Custom Pages Endpoints", () => {
       expect(response.body.content.columns[0].cards).toEqual([]);
     });
 
+    it("crea una página de tipo galeria con lista de entradas vacía", async () => {
+      const response = await request(app).post("/custom-pages").set(authed()).send({ title: "Fotos", template: "galeria" });
+
+      expect(response.status).toBe(201);
+      expect(response.body.content).toEqual({ items: [] });
+    });
+
     it("rechaza un modelo desconocido", async () => {
       const response = await request(app).post("/custom-pages").set(authed()).send({ title: "X", template: "no-existe" });
       expect(response.status).toBe(400);

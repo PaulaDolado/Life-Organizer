@@ -1,10 +1,10 @@
 import Joi from "joi";
 
 // Modelos disponibles al crear una página desde "+ Nueva página" (ver AppShell en el dashboard):
-// "nota" (libreta en blanco) y "kanban" son plantillas genéricas; el resto son versiones propias
-// y simplificadas de una sección existente (Finanzas/Proyectos/Objetivos/Agenda/Hoy), con sus
+// "nota", "kanban" y "galeria" son plantillas genéricas; el resto son versiones propias y
+// simplificadas de una sección existente (Finanzas/Proyectos/Objetivos/Agenda/Hoy), con sus
 // propios datos — no leen ni escriben en Transaction/Project/Goal/Event/etc.
-export const TEMPLATES = ["nota", "kanban", "finanzas", "proyectos", "objetivos", "agenda", "hoy"] as const;
+export const TEMPLATES = ["nota", "kanban", "galeria", "finanzas", "proyectos", "objetivos", "agenda", "hoy"] as const;
 
 export const idParamSchema = Joi.object({
   id: Joi.number().integer().positive().required(),
