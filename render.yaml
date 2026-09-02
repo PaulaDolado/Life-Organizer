@@ -21,6 +21,16 @@ services:
         fromDatabase:
           name: life-organizer-db
           property: connectionString
+      # El Postgres de Render (arriba) no tiene pooler delante, así que apunta a la misma BD que
+      # DATABASE_URL. Hace falta porque el Dockerfile corre `prisma migrate deploy` en cada
+      # arranque, y la CLI de Prisma usa DIRECT_URL para migrar (ver prisma/schema.prisma). Si en
+      # vez del Postgres de Render usas uno externo con pooler (p.ej. Supabase), pon aquí a mano
+      # la conexión DIRECTA (puerto 5432) y en DATABASE_URL la POOLED (puerto 6543) — ver
+      # DEPLOYMENT.md#usar-supabase-como-postgres.
+      - key: DIRECT_URL
+        fromDatabase:
+          name: life-organizer-db
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET

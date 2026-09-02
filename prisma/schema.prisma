@@ -7,7 +7,15 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // `url`: la usa Prisma Client en tiempo de ejecución — normalmente la conexión POOLED cuando
+  // el proveedor de Postgres tiene pooler (p.ej. Supabase por PgBouncer/Supavisor, puerto 6543).
+  // `directUrl`: la usa la CLI de Prisma (`migrate`, `db push`, `db pull`) para migrar — el modo
+  // transacción de un pooler puede romper los advisory locks que necesita migrar, así que estas
+  // operaciones van siempre por la conexión DIRECTA (puerto 5432), nunca por el pooler.
+  // Sin un pooler delante (Postgres local, Docker, Railway/Render sin Supabase) las dos apuntan a
+  // la MISMA cadena de conexión — ver .env.example y DEPLOYMENT.md#usar-supabase-como-postgres.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

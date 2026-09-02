@@ -27,6 +27,10 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/life_organizer_test
+      # Sin pooler en el contenedor de CI — misma cadena que DATABASE_URL. Necesaria porque
+      # "Run database migrations" (más abajo) usa `prisma migrate deploy`, que requiere DIRECT_URL
+      # (ver prisma/schema.prisma).
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/life_organizer_test
       JWT_SECRET: ci-test-secret
       JWT_REFRESH_SECRET: ci-test-refresh-secret
       NODE_ENV: test

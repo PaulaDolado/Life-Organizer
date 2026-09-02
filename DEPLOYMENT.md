@@ -12,11 +12,16 @@ Dos rutas soportadas: **Railway** (recomendada, más simple) y **Render** (usa e
 4. En el servicio de la API, pestaña **Variables**, añade:
    ```
    DATABASE_URL=${{Postgres.DATABASE_URL}}   # referencia automática al servicio de Postgres
+   DIRECT_URL=${{Postgres.DATABASE_URL}}     # misma BD — el Postgres de Railway no tiene pooler delante
    JWT_SECRET=<genera un secreto largo aleatorio>
    JWT_REFRESH_SECRET=<otro secreto distinto>
    NODE_ENV=production
    CORS_ORIGIN=<dominio del dashboard, o * mientras pruebas>
    ```
+   `DIRECT_URL` hace falta porque el `Dockerfile` corre `prisma migrate deploy` en cada arranque
+   del contenedor, y la CLI de Prisma usa esa variable para migrar (ver `prisma/schema.prisma`) —
+   sin ella el contenedor no arranca. Si en vez del Postgres de Railway conectas uno externo con
+   pooler (Supabase), aquí SÍ deben ser distintas — ver [Usar Supabase como Postgres](#usar-supabase-como-postgres) más abajo.
 5. **Settings → Deploy → Custom Start Command** no hace falta tocarlo (usa el `CMD` del Dockerfile). Si quieres correr las migraciones como parte del deploy, añade en **Settings → Deploy Triggers / Pre-Deploy Command**:
    ```
    npx prisma migrate deploy
@@ -30,12 +35,40 @@ Dos rutas soportadas: **Railway** (recomendada, más simple) y **Render** (usa e
 ## Opción B: Render (con `render.yaml`)
 
 1. Sube el repo a GitHub (igual que en el paso 1 de Railway).
-2. En [render.com](https://render.com), **New → Blueprint**, apunta al repo — Render detecta [`render.yaml`](render.yaml) y crea automáticamente el servicio web + la base de datos Postgres, con `DATABASE_URL` conectada y `JWT_SECRET`/`JWT_REFRESH_SECRET` generados.
+2. En [render.com](https://render.com), **New → Blueprint**, apunta al repo — Render detecta [`render.yaml`](render.yaml) y crea automáticamente el servicio web + la base de datos Postgres, con `DATABASE_URL`/`DIRECT_URL` conectadas (a la misma BD — el Postgres de Render no tiene pooler delante) y `JWT_SECRET`/`JWT_REFRESH_SECRET` generados.
 3. Antes del primer deploy exitoso necesitas aplicar las migraciones. Opciones:
    - Si tu plan soporta **Pre-Deploy Command** (Settings del servicio web): `npx prisma migrate deploy`.
    - Si no, entra a **Shell** del servicio ya desplegado y corre `npx prisma migrate deploy` manualmente.
 4. Revisa `CORS_ORIGIN` en las variables de entorno del servicio y cámbialo al dominio real del dashboard cuando lo despliegues.
 5. Render asigna una URL tipo `https://life-organizer-api.onrender.com`. Prueba `/health` y `/api-docs`.
+
+## Usar Supabase como Postgres
+
+Supabase es Postgres administrado real, así que Prisma se conecta sin cambios de código — pero
+Supabase **no sustituye a Railway/Render**: solo te da la base de datos, no ejecuta la API
+(`src/`). El combo es: **Railway o Render para la API** (los pasos de arriba, tal cual) **+
+Supabase solo como Postgres**, pegando sus connection strings en vez de usar el Postgres que
+Railway/Render crean por defecto.
+
+1. En tu proyecto de Supabase, **Project Settings → Database → Connection string**. Ahí verás
+   dos, en pestañas distintas:
+   - **Transaction pooler** (puerto `6543`, vía PgBouncer/Supavisor) — para `DATABASE_URL`.
+     Añádele `?pgbouncer=true` al final: el modo transacción del pooler no soporta los
+     "prepared statements" que Prisma usa por defecto, y ese parámetro se lo dice.
+   - **Session pooler** o **Direct connection** (puerto `5432`) — para `DIRECT_URL`. Esta es la
+     que usa `prisma migrate deploy` para migrar; el modo transacción de arriba puede romper los
+     advisory locks que necesita migrar, así que esta va SIEMPRE directa, sin pooler.
+2. En Railway/Render, sustituye las variables del paso 4 (Railway) o las que generó el Blueprint
+   (Render) por estas dos:
+   ```
+   DATABASE_URL=postgresql://postgres.[ref]:[password]@[host]:6543/postgres?pgbouncer=true
+   DIRECT_URL=postgresql://postgres.[ref]:[password]@[host]:5432/postgres
+   ```
+   (En Render, si usaste el Blueprint, puedes borrar el bloque `databases:` de `render.yaml` — o
+   simplemente dejarlo sin usar y sobreescribir `DATABASE_URL`/`DIRECT_URL` a mano en el
+   dashboard del servicio; el de Supabase manda.)
+3. El resto del flujo no cambia: migraciones, seed, `/health` — todo sigue igual, solo cambia
+   dónde vive la base de datos.
 
 ## Después de desplegar
 
@@ -52,7 +85,8 @@ Dos rutas soportadas: **Railway** (recomendada, más simple) y **Render** (usa e
 
 | Variable | Obligatoria | Notas |
 |---|---|---|
-| `DATABASE_URL` | Sí | La da el proveedor (Postgres administrado) |
+| `DATABASE_URL` | Sí | La da el proveedor (Postgres administrado). Con pooler (Supabase), la conexión POOLED |
+| `DIRECT_URL` | Sí | La usa `prisma migrate deploy` en cada arranque (ver `Dockerfile`). Sin pooler, igual a `DATABASE_URL`; con pooler (Supabase), la conexión DIRECTA — ver [Usar Supabase como Postgres](#usar-supabase-como-postgres) |
 | `JWT_SECRET` / `JWT_REFRESH_SECRET` | Sí | Deben ser distintos entre sí, largos y aleatorios. Nunca reutilices los de `.env.example` |
 | `NODE_ENV=production` | Sí | Activa `trust proxy`, logs en JSON, oculta detalles de error 500 |
 | `CORS_ORIGIN` | Recomendada | Dominio exacto del dashboard en vez de `*` una vez lo tengas desplegado |

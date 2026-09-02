@@ -1,7 +1,9 @@
 import { api } from "../api/client";
 import { getCursor, setCursor } from "../db/syncMeta";
 import { upsertEvents, deleteEvent } from "../db/eventsRepo";
+import { upsertEventExceptions, deleteEventExceptionByServerId } from "../db/eventExceptionsRepo";
 import { upsertTasks, deleteTask } from "../db/tasksRepo";
+import { upsertSubtasks, deleteSubtask } from "../db/subtasksRepo";
 import { upsertNotes, deleteNoteByServerId } from "../db/notesRepo";
 import { upsertHabits, upsertHabitLogs, deleteHabit, deleteHabitLogByServerId } from "../db/habitsRepo";
 import { PullResponse } from "../types";
@@ -17,7 +19,9 @@ export async function pullFromServer(): Promise<void> {
   const response = await api.get<PullResponse>(`/sync/pull${query}`);
 
   await upsertEvents(response.events);
+  await upsertEventExceptions(response.eventExceptions);
   await upsertTasks(response.tasks);
+  await upsertSubtasks(response.subtasks);
   await upsertNotes(response.notes);
   await upsertHabits(response.habits);
   await upsertHabitLogs(response.habitLogs);
@@ -27,8 +31,14 @@ export async function pullFromServer(): Promise<void> {
       case "event":
         await deleteEvent(tombstone.entityId);
         break;
+      case "eventException":
+        await deleteEventExceptionByServerId(tombstone.entityId);
+        break;
       case "task":
         await deleteTask(tombstone.entityId);
+        break;
+      case "subtask":
+        await deleteSubtask(tombstone.entityId);
         break;
       case "note":
         await deleteNoteByServerId(tombstone.entityId);
@@ -39,7 +49,6 @@ export async function pullFromServer(): Promise<void> {
       case "habitLog":
         await deleteHabitLogByServerId(tombstone.entityId);
         break;
-      // "eventException" y "subtask" no se cachean en esta fase — se ignoran.
     }
   }
 

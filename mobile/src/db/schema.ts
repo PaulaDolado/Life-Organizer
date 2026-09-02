@@ -1,13 +1,12 @@
 import { type SQLiteDatabase } from "expo-sqlite";
 
-// Espejo local (SQLite) del subconjunto de datos que la pantalla "Hoy" necesita offline. Ver
-// el comentario de cada tabla en types.ts para el porqué de cada columna — en resumen:
-// - events/habits: solo caché de lectura, se sobrescriben en cada pull, sin `dirty`.
-// - tasks: se edita el `status` desde el móvil (marcar hecha) → `dirty` marca "pendiente de subir".
+// Espejo local (SQLite) del subconjunto de datos que la app necesita offline. Ver el comentario
+// de cada tabla en types.ts para el porqué de cada columna — en resumen:
+// - events/tasks/subtasks: el móvil puede CREAR filas nuevas → mismo patrón que `notes` ya usaba
+//   en Fase 1 (id TEXT = uuid hasta sincronizar, luego id de servidor; `synced` + `pendingOp`).
+// - event_exceptions/habits: solo caché de lectura, se sobrescriben en cada pull, sin `dirty`.
 // - habit_logs: clave compuesta (habitId, date) — igual que en el propio servidor, así que ni
 //   siquiera hace falta un id local generado por el cliente (ver sync/push.ts).
-// - notes: la única tabla donde el móvil CREA filas nuevas → necesita el baile de id
-//   local(uuid)→id de servidor (columna `synced`, ver types.ts).
 export async function initSchema(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -18,22 +17,62 @@ export async function initSchema(db: SQLiteDatabase): Promise<void> {
     );
 
     CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY,
+      id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
+      description TEXT,
       type TEXT NOT NULL,
       startTime TEXT NOT NULL,
       endTime TEXT NOT NULL,
       location TEXT,
-      updatedAt TEXT NOT NULL
+      isRecurring INTEGER NOT NULL DEFAULT 0,
+      recurringPattern TEXT,
+      reminderMinutesBefore TEXT NOT NULL DEFAULT '[]',
+      guests TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'tidely',
+      googleEventId TEXT,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      synced INTEGER NOT NULL DEFAULT 0,
+      pendingOp TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS event_exceptions (
+      eventId TEXT NOT NULL,
+      originalStartTime TEXT NOT NULL,
+      serverId INTEGER,
+      status TEXT NOT NULL,
+      newStartTime TEXT,
+      newEndTime TEXT,
+      updatedAt TEXT NOT NULL,
+      PRIMARY KEY (eventId, originalStartTime)
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY,
+      id TEXT PRIMARY KEY,
+      plannerId INTEGER,
+      projectId INTEGER,
       title TEXT NOT NULL,
-      status TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'todo',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      "order" REAL NOT NULL DEFAULT 0,
       dueDate TEXT,
+      tags TEXT NOT NULL DEFAULT '[]',
+      estimatedMinutes INTEGER,
+      actualMinutes INTEGER NOT NULL DEFAULT 0,
       updatedAt TEXT NOT NULL,
-      dirty INTEGER NOT NULL DEFAULT 0
+      synced INTEGER NOT NULL DEFAULT 0,
+      pendingOp TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS subtasks (
+      id TEXT PRIMARY KEY,
+      taskId TEXT NOT NULL,
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0,
+      updatedAt TEXT NOT NULL,
+      synced INTEGER NOT NULL DEFAULT 0,
+      pendingOp TEXT
     );
 
     CREATE TABLE IF NOT EXISTS habits (

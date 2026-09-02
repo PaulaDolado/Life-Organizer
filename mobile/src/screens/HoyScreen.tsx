@@ -3,23 +3,24 @@ import { View, Text, TextInput, Pressable, FlatList, StyleSheet, ActivityIndicat
 import { useNetInfo } from "@react-native-community/netinfo";
 import { useAuth } from "../auth/AuthContext";
 import { runSync } from "../sync";
-import { listTodayEvents } from "../db/eventsRepo";
+import { listTodayEvents, ParsedEvent } from "../db/eventsRepo";
 import { listTasksDueToday, toggleTaskDone } from "../db/tasksRepo";
 import { listHabits, isHabitDoneToday, toggleHabitToday } from "../db/habitsRepo";
 import { listNotes, createNoteLocal, toggleNoteChecked, deleteNoteLocal } from "../db/notesRepo";
-import { LocalEvent, LocalHabit, LocalNote, LocalTask } from "../types";
+import { EventOccurrence } from "../utils/recurrence";
+import { LocalHabit, LocalNote, LocalTask } from "../types";
 
 const SYNC_INTERVAL_MS = 60_000;
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function HoyScreen() {
   const { user, logout } = useAuth();
   const { isConnected } = useNetInfo();
 
-  const [events, setEvents] = useState<LocalEvent[]>([]);
+  const [events, setEvents] = useState<EventOccurrence<ParsedEvent>[]>([]);
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [habits, setHabits] = useState<(LocalHabit & { done: boolean })[]>([]);
   const [notes, setNotes] = useState<LocalNote[]>([]);
@@ -76,7 +77,7 @@ export function HoyScreen() {
     return () => clearInterval(id);
   }, [isConnected, sync]);
 
-  const handleToggleTask = async (id: number) => {
+  const handleToggleTask = async (id: string) => {
     await toggleTaskDone(id);
     await reload();
     sync();
@@ -123,7 +124,9 @@ export function HoyScreen() {
       </View>
 
       <View style={styles.syncBar}>
-        <Text style={styles.syncText}>{syncing ? "Sincronizando…" : lastSyncedAt ? `Última sync: ${formatTime(lastSyncedAt)}` : "Sin sincronizar aún"}</Text>
+        <Text style={styles.syncText}>
+          {syncing ? "Sincronizando…" : lastSyncedAt ? `Última sync: ${formatTime(new Date(lastSyncedAt))}` : "Sin sincronizar aún"}
+        </Text>
         <Pressable onPress={sync} disabled={syncing}>
           {syncing ? <ActivityIndicator size="small" /> : <Text style={styles.syncButton}>Sincronizar</Text>}
         </Pressable>
@@ -137,10 +140,10 @@ export function HoyScreen() {
           <View style={styles.content}>
             <Section title="Eventos de hoy">
               {events.length === 0 && <EmptyText text="Sin eventos hoy" />}
-              {events.map((e) => (
-                <View key={e.id} style={styles.row}>
-                  <Text style={styles.rowTime}>{formatTime(e.startTime)}</Text>
-                  <Text style={styles.rowTitle}>{e.title}</Text>
+              {events.map((occ) => (
+                <View key={`${occ.event.id}-${occ.startTime.toISOString()}`} style={styles.row}>
+                  <Text style={styles.rowTime}>{formatTime(occ.startTime)}</Text>
+                  <Text style={styles.rowTitle}>{occ.event.title}</Text>
                 </View>
               ))}
             </Section>
@@ -151,7 +154,7 @@ export function HoyScreen() {
                 <Pressable key={t.id} style={styles.row} onPress={() => handleToggleTask(t.id)}>
                   <Checkbox checked={t.status === "done"} />
                   <Text style={[styles.rowTitle, t.status === "done" && styles.rowTitleDone]}>{t.title}</Text>
-                  {t.dirty === 1 && <Text style={styles.pendingTag}>pendiente</Text>}
+                  {(t.synced === 0 || t.pendingOp === "update") && <Text style={styles.pendingTag}>pendiente</Text>}
                 </Pressable>
               ))}
             </Section>
