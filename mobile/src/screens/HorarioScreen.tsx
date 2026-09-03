@@ -21,6 +21,7 @@ import {
   updateRow,
 } from "../api/schedule";
 import { colors, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Puerto directo de dashboard/src/pages/SchedulePage.tsx — mismo modelo (Schedule con nombre
 // propio + ScheduleRow de texto libre lunes-viernes, sin fechas). Como Objetivos, no pasa por
@@ -30,6 +31,7 @@ import { colors, fonts, radius, shadow } from "../theme";
 // aparte sin relación con un horario concreto) — quedan documentadas en mobile/README.md.
 
 export function HorarioScreen() {
+  const { collapsed } = useSidebar();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [rows, setRows] = useState<ScheduleRow[]>([]);
@@ -163,7 +165,7 @@ export function HorarioScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Horario</Text>
         <Pressable style={styles.newButton} onPress={() => setShowCreate(true)}>
           <Text style={styles.newButtonText}>+ Nuevo</Text>

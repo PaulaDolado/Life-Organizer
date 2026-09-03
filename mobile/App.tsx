@@ -9,6 +9,7 @@ import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outf
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { AppSidebar } from "./src/navigation/AppSidebar";
+import { SidebarProvider } from "./src/navigation/SidebarContext";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { HoyScreen } from "./src/screens/HoyScreen";
 import { AgendaScreen } from "./src/screens/AgendaScreen";
@@ -71,25 +72,30 @@ function Root() {
   if (!user) return <LoginScreen />;
 
   return (
-    <NavigationContainer>
-      <Tab.Navigator
-        tabBar={(props) => <AppSidebar {...props} />}
-        screenOptions={{
-          headerShown: false,
-          tabBarPosition: "left",
-        }}
-      >
-        <Tab.Screen name="Hoy" component={HoyScreen} />
-        <Tab.Screen name="Agenda" component={AgendaScreen} />
-        <Tab.Screen name="Planificador" component={PlanificadorScreen} />
-        <Tab.Screen name="Horario" component={HorarioScreen} />
-        <Tab.Screen name="Objetivos" component={ObjetivosScreen} />
-        <Tab.Screen name="Finanzas" component={FinanzasScreen} />
-        <Tab.Screen name="Ahorro" component={MetasAhorroScreen} />
-        <Tab.Screen name="Páginas" component={PaginasScreen} />
-        <Tab.Screen name="Proyectos" component={ProyectosScreen} />
-      </Tab.Navigator>
-    </NavigationContainer>
+    // SidebarProvider por fuera del Navigator: AppSidebar (el tabBar) y todas las pantallas
+    // (hermanas suyas dentro del Navigator, no hijas) necesitan leer/escribir el mismo "¿está
+    // colapsado el menú?" — ver SidebarContext.tsx para el porqué.
+    <SidebarProvider>
+      <NavigationContainer>
+        <Tab.Navigator
+          tabBar={(props) => <AppSidebar {...props} />}
+          screenOptions={{
+            headerShown: false,
+            tabBarPosition: "left",
+          }}
+        >
+          <Tab.Screen name="Hoy" component={HoyScreen} />
+          <Tab.Screen name="Agenda" component={AgendaScreen} />
+          <Tab.Screen name="Planificador" component={PlanificadorScreen} />
+          <Tab.Screen name="Horario" component={HorarioScreen} />
+          <Tab.Screen name="Objetivos" component={ObjetivosScreen} />
+          <Tab.Screen name="Finanzas" component={FinanzasScreen} />
+          <Tab.Screen name="Ahorro" component={MetasAhorroScreen} />
+          <Tab.Screen name="Páginas" component={PaginasScreen} />
+          <Tab.Screen name="Proyectos" component={ProyectosScreen} />
+        </Tab.Navigator>
+      </NavigationContainer>
+    </SidebarProvider>
   );
 }
 

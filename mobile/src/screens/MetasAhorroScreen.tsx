@@ -13,6 +13,7 @@ import {
   SavingsGoalType,
 } from "../api/finance";
 import { colors, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Puerto directo de dashboard/src/pages/MetasAhorroPage.tsx + dashboard/src/components/
 // SavingsGoals.tsx — mismo "grid de casillas" (cada casilla = stepAmount, tocarla aporta o retira
@@ -70,6 +71,7 @@ const TABS: { value: SavingsGoalType | "all"; label: string }[] = [
 ];
 
 export function MetasAhorroScreen() {
+  const { collapsed } = useSidebar();
   const [tab, setTab] = useState<SavingsGoalType | "all">("all");
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [allGoals, setAllGoals] = useState<SavingsGoal[]>([]);
@@ -123,7 +125,7 @@ export function MetasAhorroScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Metas de ahorro</Text>
         <Pressable style={styles.newButton} onPress={() => setShowCreate(true)}>
           <Text style={styles.newButtonText}>+ Nueva</Text>

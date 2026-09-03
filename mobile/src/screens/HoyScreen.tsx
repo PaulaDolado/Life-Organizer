@@ -11,6 +11,7 @@ import { listNotes, createNoteLocal, toggleNoteChecked, deleteNoteLocal } from "
 import { EventOccurrence } from "../utils/recurrence";
 import { LocalHabit, LocalNote, LocalTask } from "../types";
 import { colors, fonts, radius, shadow, eventTypeStyle } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 import { QuickAccessCard } from "../components/QuickAccessCard";
 import { RecentEntriesCard } from "../components/RecentEntriesCard";
 
@@ -80,6 +81,7 @@ function formatDate(date: Date): string {
 export function HoyScreen() {
   const { user, logout } = useAuth();
   const { isConnected } = useNetInfo();
+  const { collapsed } = useSidebar();
 
   const [events, setEvents] = useState<EventOccurrence<ParsedEvent>[]>([]);
   const [tasks, setTasks] = useState<LocalTask[]>([]);
@@ -181,7 +183,7 @@ export function HoyScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* HEADER */}
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>Hoy</Text>
           <Text style={styles.dateSubtitle}>{formatDate(todayDate)}</Text>

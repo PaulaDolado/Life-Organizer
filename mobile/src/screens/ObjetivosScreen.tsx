@@ -5,6 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { ApiError } from "../api/client";
 import { addProgress, createGoal, deleteGoal, Goal, GoalPeriod, GoalStatus, listGoals, NewGoalInput } from "../api/goals";
 import { colors, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Puerto directo de dashboard/src/pages/MetasPage.tsx — mismos campos, mismas pestañas, mismo
 // cálculo de "ritmo" (paceStatus). A diferencia de Agenda/Planificador, esta pantalla no cachea
@@ -49,6 +50,7 @@ function paceStatus(goal: Goal): "green" | "yellow" {
 }
 
 export function ObjetivosScreen() {
+  const { collapsed } = useSidebar();
   const [status, setStatus] = useState<GoalStatus>("active");
   const [goals, setGoals] = useState<Goal[]>([]);
   const [activeGoals, setActiveGoals] = useState<Goal[]>([]);
@@ -95,7 +97,7 @@ export function ObjetivosScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Objetivos</Text>
         <Pressable style={styles.newButton} onPress={() => setShowCreate(true)}>
           <Text style={styles.newButtonText}>+ Nuevo</Text>

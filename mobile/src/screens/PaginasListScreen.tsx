@@ -15,6 +15,7 @@ import {
   TEMPLATE_LABELS,
 } from "../api/customPages";
 import { colors, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 import { PaginasStackParamList } from "./PaginasScreen";
 
 // Lista de "Páginas personalizadas" — puerto de la parte de gestión de páginas que en la web vive
@@ -29,6 +30,7 @@ import { PaginasStackParamList } from "./PaginasScreen";
 type Props = NativeStackScreenProps<PaginasStackParamList, "Lista">;
 
 export function PaginasListScreen({ navigation }: Props) {
+  const { collapsed } = useSidebar();
   const [pages, setPages] = useState<CustomPageSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export function PaginasListScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Páginas</Text>
         <Pressable style={styles.newButton} onPress={() => setShowCreate(true)}>
           <Text style={styles.newButtonText}>+ Nueva</Text>

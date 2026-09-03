@@ -17,6 +17,7 @@ import {
   TransactionType,
 } from "../api/finance";
 import { colors, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Puerto directo de dashboard/src/pages/FinanzasPage.tsx — mismos datos (balance del mes,
 // movimientos, análisis, resumen de metas de ahorro). No pasa por SQLite: ver el comentario de
@@ -32,6 +33,7 @@ function formatMoney(amount: number): string {
 const MONTH_LABELS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 export function FinanzasScreen() {
+  const { collapsed } = useSidebar();
   const [balance, setBalance] = useState<MonthlyBalance | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [analytics, setAnalytics] = useState<FinanceAnalytics | null>(null);
@@ -85,7 +87,7 @@ export function FinanzasScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Finanzas</Text>
         <Pressable style={styles.newButton} onPress={() => setShowCreate(true)}>
           <Text style={styles.newButtonText}>+ Nuevo</Text>

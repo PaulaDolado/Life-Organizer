@@ -8,6 +8,7 @@ import {listAllTasks,createTaskLocal,updateTaskLocal,moveTask,deleteTaskLocal,pa
 import { listForTask, createSubtaskLocal, toggleSubtask, deleteSubtaskLocal } from "../db/subtasksRepo";
 import { LocalSubtask, LocalTask, TASK_PRIORITIES, TASK_PRIORITY_LABELS, TASK_STATUSES, TASK_STATUS_LABELS, TaskPriority, TaskStatus } from "../types";
 import { colors, dueDateStyle, fonts, priorityStyle, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 const VIEW_MODES = ["kanban", "tabla"] as const;
 type ViewMode = (typeof VIEW_MODES)[number];
@@ -73,6 +74,7 @@ function toForm(task: LocalTask): TaskForm {
 }
 
 export function PlanificadorScreen() {
+  const { collapsed } = useSidebar();
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [drafts, setDrafts] = useState<Record<TaskStatus, string>>({ todo: "", in_progress: "", done: "" });
   const [syncing, setSyncing] = useState(false);
@@ -208,7 +210,7 @@ export function PlanificadorScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Planificador</Text>
       </View>
 
@@ -497,7 +499,6 @@ export function PlanificadorScreen() {
           value={form?.dueDate ?? new Date()}
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
-          onChange={onDuePickerChange}
           onDismiss={() => setShowDuePicker(false)}
         />
       )}

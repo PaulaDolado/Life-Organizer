@@ -3,6 +3,7 @@ import { Animated, Easing, View, Text, Pressable, Image, ScrollView, StyleSheet,
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../auth/AuthContext";
+import { useSidebar } from "./SidebarContext";
 import { colors, fonts, radius } from "../theme";
 
 // Sidebar lateral para móvil — reemplaza la barra de pestañas inferior (bottom-tabs) por un menú
@@ -90,7 +91,7 @@ const CHILD_INDENT = 28;
 export function AppSidebar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, setCollapsed } = useSidebar();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [labelWidths, setLabelWidths] = useState<Record<string, number>>({});
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();

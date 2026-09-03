@@ -19,6 +19,7 @@ import {
   REMINDER_PRESET_LABELS,
 } from "../types";
 import { colors, eventTypeStyle, fonts, radius, shadow } from "../theme";
+import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Etiquetas de día en el mismo criterio "clave UTC" que `todayKey()` usa en el resto de la app
 // (ver eventsRepo.ts) — una simplificación deliberada frente al manejo de timezone del backend
@@ -89,6 +90,7 @@ function formToOccurrenceEditor(event: ParsedEvent): EventForm {
 }
 
 export function AgendaScreen() {
+  const { collapsed } = useSidebar();
   const [weekStart, setWeekStart] = useState(() => mondayOfWeek(new Date()));
   const [selectedDateKey, setSelectedDateKey] = useState(() => dateKeyOf(new Date()));
   const [occurrences, setOccurrences] = useState<EventOccurrence<ParsedEvent>[]>([]);
@@ -201,7 +203,7 @@ export function AgendaScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
         <Text style={styles.title}>Agenda</Text>
         <View style={styles.headerRight}>
           <Text style={styles.syncText}>{syncing ? "Sincronizando…" : ""}</Text>
