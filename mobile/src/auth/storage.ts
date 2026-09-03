@@ -5,9 +5,14 @@ import { AuthResponse, User } from "../types";
 // Android) — nunca en AsyncStorage ni en SQLite, que no están cifrados. Equivalente móvil de
 // `dashboard/src/context/AuthContext.tsx`, que usa `localStorage` (aceptable ahí porque es un
 // navegador de escritorio, no el caso aquí).
-const TOKEN_KEY = "life-organizer:token";
-const REFRESH_TOKEN_KEY = "life-organizer:refreshToken";
-const USER_KEY = "life-organizer:user";
+// `SecureStore` solo admite claves alfanuméricas más ".", "-" y "_" (nada de ":") — con ":" lanza
+// "Invalid key provided to SecureStore" en cuanto se llama, y como `loadStoredAuth()` se invoca
+// sin `.catch()` en el `useEffect` de arranque de `AuthContext`, la promesa rechazada deja
+// `ready` en `false` para siempre: la app se queda colgada en el spinner de carga. Encontrado al
+// probar por primera vez en un emulador Android real (Fase 1 nunca se había probado end-to-end).
+const TOKEN_KEY = "life-organizer.token";
+const REFRESH_TOKEN_KEY = "life-organizer.refreshToken";
+const USER_KEY = "life-organizer.user";
 
 export interface StoredAuth {
   token: string;

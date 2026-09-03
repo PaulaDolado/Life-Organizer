@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, FlatList, StyleSheet, ActivityIndicator, SafeAreaView } from "react-native";
+import { View, Text, TextInput, Pressable, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+// El `SafeAreaView` de "react-native" está deprecado (avisa en cada arranque y, en el emulador,
+// su banner de aviso llega a tapar la barra de pestañas) — el de `react-native-safe-area-context`
+// (ya en package.json, usado por `App.tsx`) es el reemplazo recomendado, mismo API de props.
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useNetInfo } from "@react-native-community/netinfo";
 import { useAuth } from "../auth/AuthContext";
 import { runSync } from "../sync";
@@ -9,6 +13,7 @@ import { listHabits, isHabitDoneToday, toggleHabitToday } from "../db/habitsRepo
 import { listNotes, createNoteLocal, toggleNoteChecked, deleteNoteLocal } from "../db/notesRepo";
 import { EventOccurrence } from "../utils/recurrence";
 import { LocalHabit, LocalNote, LocalTask } from "../types";
+import { colors, fonts, radius } from "../theme";
 
 const SYNC_INTERVAL_MS = 60_000;
 
@@ -118,7 +123,7 @@ export function HoyScreen() {
           <Text style={styles.subtitle}>{user?.name}</Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={[styles.statusDot, { backgroundColor: isConnected ? "#5b6b4f" : "#b3432b" }]} />
+          <View style={[styles.statusDot, { backgroundColor: isConnected ? colors.primary : colors.destructive }]} />
           <Text style={styles.statusText}>{isConnected ? "En línea" : "Sin conexión"}</Text>
         </View>
       </View>
@@ -226,13 +231,13 @@ function Checkbox({ checked }: { checked: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#faf7f2" },
+  container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 8 },
-  title: { fontSize: 26, fontWeight: "700", color: "#3a332c" },
-  subtitle: { fontSize: 13, color: "#8a8073" },
+  title: { fontFamily: fonts.serif, fontSize: 30, color: colors.foreground },
+  subtitle: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 12, color: "#8a8073" },
+  statusText: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
   syncBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -240,36 +245,61 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 8,
   },
-  syncText: { fontSize: 12, color: "#8a8073" },
-  syncButton: { fontSize: 12, color: "#5b6b4f", fontWeight: "600" },
-  errorBanner: { fontSize: 12, color: "#b3432b", paddingHorizontal: 20, paddingBottom: 8 },
+  syncText: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  syncButton: { fontFamily: fonts.sansSemiBold, fontSize: 12, color: colors.primary },
+  errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive, paddingHorizontal: 20, paddingBottom: 8 },
   content: { padding: 20, paddingTop: 4, gap: 24 },
   section: { gap: 8 },
-  sectionTitle: { fontSize: 13, fontWeight: "700", color: "#8a8073", textTransform: "uppercase", letterSpacing: 0.5 },
-  emptyText: { fontSize: 14, color: "#b3ab9c", fontStyle: "italic" },
-  row: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 10, padding: 12 },
+  sectionTitle: {
+    fontFamily: fonts.sansBold,
+    fontSize: 12,
+    color: colors.mutedForeground,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
   rowGrow: { flex: 1 },
-  rowTime: { fontSize: 13, color: "#8a8073", width: 44 },
-  rowTitle: { fontSize: 15, color: "#3a332c", flexShrink: 1 },
-  rowTitleDone: { textDecorationLine: "line-through", color: "#b3ab9c" },
-  pendingTag: { fontSize: 10, color: "#b3873a", marginLeft: "auto" },
+  rowTime: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground, width: 44 },
+  rowTitle: { fontFamily: fonts.sans, fontSize: 15, color: colors.foreground, flexShrink: 1 },
+  rowTitleDone: { textDecorationLine: "line-through", color: colors.mutedForeground },
+  pendingTag: { fontFamily: fonts.sansMedium, fontSize: 10, color: colors.warning, marginLeft: "auto" },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: "#c9c0b0",
+    borderColor: colors.inputBorder,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: { backgroundColor: "#5b6b4f", borderColor: "#5b6b4f" },
-  checkboxMark: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxMark: { color: colors.primaryForeground, fontSize: 13, fontFamily: fonts.sansBold },
   noteInputRow: { flexDirection: "row", gap: 8 },
-  noteInput: { flex: 1, backgroundColor: "#fff", borderRadius: 10, padding: 12, fontSize: 15 },
-  addButton: { width: 44, backgroundColor: "#5b6b4f", borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  addButtonText: { color: "#fff", fontSize: 20, fontWeight: "700" },
+  noteInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.foreground,
+  },
+  addButton: { width: 44, backgroundColor: colors.primary, borderRadius: radius.input, alignItems: "center", justifyContent: "center" },
+  addButtonText: { color: colors.primaryForeground, fontSize: 20, fontFamily: fonts.sansBold },
   noteRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  deleteText: { fontSize: 12, color: "#b3432b" },
+  deleteText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.destructive },
   logoutButton: { alignItems: "center", padding: 14 },
-  logoutText: { color: "#b3432b", fontSize: 14 },
+  logoutText: { fontFamily: fonts.sansMedium, color: colors.destructive, fontSize: 14 },
 });

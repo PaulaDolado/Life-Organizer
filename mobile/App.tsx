@@ -1,27 +1,64 @@
+import { useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import * as SplashScreen from "expo-splash-screen";
+import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from "@expo-google-fonts/outfit";
+import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { HoyScreen } from "./src/screens/HoyScreen";
 import { AgendaScreen } from "./src/screens/AgendaScreen";
 import { PlanificadorScreen } from "./src/screens/PlanificadorScreen";
+import { HorarioScreen } from "./src/screens/HorarioScreen";
+import { ObjetivosScreen } from "./src/screens/ObjetivosScreen";
+import { FinanzasScreen } from "./src/screens/FinanzasScreen";
+import { MetasAhorroScreen } from "./src/screens/MetasAhorroScreen";
+import { PaginasScreen } from "./src/screens/PaginasScreen";
+import { colors, fonts } from "./src/theme";
 
-// 3 pestañas (Hoy / Agenda / Planificador) — ver mobile/README.md para el resto de secciones de
-// la web que aún no tienen pantalla propia (Proyectos, Finanzas, Metas...). Cada pantalla pinta
-// su propia cabecera dentro de su SafeAreaView, así que la barra de pestañas no lleva cabecera
-// propia (`headerShown: false`) — mismo criterio que ya usaba el stack de una sola pantalla.
+// Mantiene la splash nativa visible hasta que las fuentes (ver más abajo) terminen de cargar —
+// llamada en scope global, no dentro de un componente, tal y como pide la propia documentación
+// de expo-splash-screen (si se llama demasiado tarde, la splash ya se habrá ocultado sola).
+SplashScreen.preventAutoHideAsync();
+
+// 8 pestañas planas (Hoy / Agenda / Planificador / Horario / Objetivos / Finanzas / Ahorro /
+// Páginas) — mismo criterio que el propio `FLAT_NAV` de
+// dashboard/src/components/AppShell.tsx: la web anida Planificador+Horario bajo Agenda y Metas de
+// ahorro bajo Finanzas en el menú de escritorio, pero los aplana en una lista para su propio menú
+// móvil ("donde anidar no tiene mucho sitio", dice su comentario) — aquí se sigue el mismo
+// criterio en vez de reinventar uno propio. Ver mobile/README.md para el resto de secciones de la
+// web que aún no tienen pantalla propia (Proyectos, Hobbies...). Horario, Objetivos, Finanzas,
+// Ahorro y Páginas son las únicas que NO pasan por SQLite (ver src/api/schedule.ts,
+// src/api/goals.ts, src/api/finance.ts, src/api/customPages.ts): necesitan conexión, igual que en
+// la propia web. Cada pantalla pinta su propia cabecera dentro de su SafeAreaView (headerShown:
+// false a nivel de pestañas), salvo "Páginas", que monta su propia pila anidada con cabecera
+// nativa para el detalle — ver PaginasScreen.tsx.
 export type RootTabParamList = {
   Hoy: undefined;
   Agenda: undefined;
   Planificador: undefined;
+  Horario: undefined;
+  Objetivos: undefined;
+  Finanzas: undefined;
+  Ahorro: undefined;
+  Páginas: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
-const TAB_ICONS: Record<keyof RootTabParamList, string> = { Hoy: "☀", Agenda: "🗓", Planificador: "📋" };
+const TAB_ICONS: Record<keyof RootTabParamList, string> = {
+  Hoy: "☀",
+  Agenda: "🗓",
+  Planificador: "📋",
+  Horario: "⏰",
+  Objetivos: "🎯",
+  Finanzas: "💰",
+  Ahorro: "🐷",
+  Páginas: "🖼",
+};
 
 function Root() {
   const { user, ready } = useAuth();
@@ -31,7 +68,7 @@ function Root() {
     // evita un parpadeo Login→Hoy si el dispositivo tarda un poco.
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#5b6b4f" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -43,31 +80,55 @@ function Root() {
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarActiveTintColor: "#5b6b4f",
-          tabBarInactiveTintColor: "#8a8073",
-          tabBarStyle: { backgroundColor: "#fff" },
-          tabBarIcon: () => <Text style={{ fontSize: 18 }}>{TAB_ICONS[route.name as keyof RootTabParamList]}</Text>,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.mutedForeground,
+          tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+          tabBarLabelStyle: { fontFamily: fonts.sansMedium, fontSize: 10 },
+          tabBarIcon: () => <Text style={{ fontSize: 16 }}>{TAB_ICONS[route.name as keyof RootTabParamList]}</Text>,
         })}
       >
         <Tab.Screen name="Hoy" component={HoyScreen} />
         <Tab.Screen name="Agenda" component={AgendaScreen} />
         <Tab.Screen name="Planificador" component={PlanificadorScreen} />
+        <Tab.Screen name="Horario" component={HorarioScreen} />
+        <Tab.Screen name="Objetivos" component={ObjetivosScreen} />
+        <Tab.Screen name="Finanzas" component={FinanzasScreen} />
+        <Tab.Screen name="Ahorro" component={MetasAhorroScreen} />
+        <Tab.Screen name="Páginas" component={PaginasScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
 }
 
 export default function App() {
+  // Mismas familias que la web (dashboard/src/styles.css): "Outfit" para texto/UI, "Instrument
+  // Serif" para títulos — ver src/theme.ts. Los cuatro pesos de Outfit cubren todo lo que los
+  // estilos de las pantallas usan (regular/medium/semibold/bold); Instrument Serif solo tiene
+  // variante regular (400) tal como la sirve Google Fonts.
+  const [fontsLoaded] = useFonts({
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
+    InstrumentSerif_400Regular,
+  });
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) await SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) return null;
+
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider onLayout={onLayoutRootView}>
       <AuthProvider>
         <Root />
-        <StatusBar style="auto" />
+        <StatusBar style="dark" />
       </AuthProvider>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#faf7f2" },
+  loading: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
 });

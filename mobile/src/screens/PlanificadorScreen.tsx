@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, SafeAreaView } from "react-native";
-import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform } from "react-native";
+// Ver el comentario de este mismo import en HoyScreen.tsx: el `SafeAreaView` de "react-native"
+// está deprecado, este es el reemplazo recomendado.
+import { SafeAreaView } from "react-native-safe-area-context";
+import DateTimePicker, { DateTimePickerChangeEvent } from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { runSync } from "../sync";
 import {
@@ -13,18 +16,17 @@ import {
 } from "../db/tasksRepo";
 import { listForTask, createSubtaskLocal, toggleSubtask, deleteSubtaskLocal } from "../db/subtasksRepo";
 import { LocalSubtask, LocalTask, TASK_PRIORITIES, TASK_PRIORITY_LABELS, TASK_STATUSES, TASK_STATUS_LABELS, TaskPriority, TaskStatus } from "../types";
-
-const PRIORITY_COLORS: Record<TaskPriority, string> = { low: "#8a8073", medium: "#b3873a", high: "#b3432b" };
+import { colors, dueDateStyle, fonts, priorityStyle, radius, shadow } from "../theme";
 
 function nextPriority(p: TaskPriority): TaskPriority {
   const idx = TASK_PRIORITIES.indexOf(p);
   return TASK_PRIORITIES[(idx + 1) % TASK_PRIORITIES.length];
 }
 
-/** Mismo criterio de colores/etiquetas que `dueBadge` en dashboard/src/pages/PlanificadorPage.tsx
- * (líneas 69-82): vencido/hoy en rojo, ≤2 días en ámbar, resto en gris; una tarea ya hecha
- * siempre en gris (ya no importa si "venció"). */
-function dueBadge(dueDate: string | null, done: boolean): { label: string; color: string } | null {
+/** Mismo criterio que `dueBadge` en dashboard/src/pages/PlanificadorPage.tsx (líneas 69-82):
+ * vencido/hoy en destructive, ≤2 días en warning, resto en muted; una tarea ya hecha siempre en
+ * muted (ya no importa si "venció"). Los colores exactos vienen de `dueDateStyle` (src/theme.ts). */
+function dueBadge(dueDate: string | null, done: boolean): { label: string; bg: string; text: string } | null {
   if (!dueDate) return null;
   const due = new Date(dueDate);
   const today = new Date();
@@ -32,10 +34,7 @@ function dueBadge(dueDate: string | null, done: boolean): { label: string; color
   const todayDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   const daysDiff = Math.round((dueDay - todayDay) / 86_400_000);
   const label = daysDiff < 0 ? `Venció ${due.toLocaleDateString("es-ES")}` : daysDiff === 0 ? "Hoy" : due.toLocaleDateString("es-ES");
-  if (done) return { label, color: "#b3ab9c" };
-  if (daysDiff <= 0) return { label, color: "#b3432b" };
-  if (daysDiff <= 2) return { label, color: "#b3873a" };
-  return { label, color: "#8a8073" };
+  return { label, ...dueDateStyle(daysDiff, done) };
 }
 
 interface TaskForm {
@@ -182,9 +181,9 @@ export function PlanificadorScreen() {
     sync();
   };
 
-  const onDuePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
+  const onDuePickerChange = (_event: DateTimePickerChangeEvent, selected: Date) => {
     setShowDuePicker(false);
-    if (event.type !== "set" || !selected || !form) return;
+    if (!form) return;
     setForm({ ...form, dueDate: selected });
   };
 
@@ -209,12 +208,16 @@ export function PlanificadorScreen() {
                 return (
                   <Pressable key={task.id} style={styles.taskRow} onPress={() => openTask(task)}>
                     <Pressable
-                      style={[styles.priorityDot, { backgroundColor: PRIORITY_COLORS[task.priority] }]}
+                      style={[styles.priorityDot, { backgroundColor: priorityStyle(task.priority).text }]}
                       onPress={() => handleCyclePriority(task)}
                     />
                     <View style={styles.taskInfo}>
                       <Text style={[styles.taskTitle, task.status === "done" && styles.taskTitleDone]}>{task.title}</Text>
-                      {badge && <Text style={[styles.dueBadge, { color: badge.color }]}>{badge.label}</Text>}
+                      {badge && (
+                        <View style={[styles.dueBadge, { backgroundColor: badge.bg }]}>
+                          <Text style={[styles.dueBadgeText, { color: badge.text }]}>{badge.label}</Text>
+                        </View>
+                      )}
                     </View>
                     {(task.synced === 0 || task.pendingOp === "update") && <Text style={styles.pendingTag}>pendiente</Text>}
                   </Pressable>
@@ -349,7 +352,8 @@ export function PlanificadorScreen() {
           value={form?.dueDate ?? new Date()}
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
-          onChange={onDuePickerChange}
+          onValueChange={onDuePickerChange}
+          onDismiss={() => setShowDuePicker(false)}
         />
       )}
     </SafeAreaView>
@@ -357,53 +361,126 @@ export function PlanificadorScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#faf7f2" },
+  container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 8 },
-  title: { fontSize: 26, fontWeight: "700", color: "#3a332c" },
-  syncText: { fontSize: 12, color: "#8a8073" },
-  errorBanner: { fontSize: 12, color: "#b3432b", paddingHorizontal: 20, paddingBottom: 8 },
+  title: { fontFamily: fonts.serif, fontSize: 30, color: colors.foreground },
+  syncText: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive, paddingHorizontal: 20, paddingBottom: 8 },
   content: { padding: 20, paddingTop: 4, gap: 24, paddingBottom: 40 },
   section: { gap: 8 },
-  sectionTitle: { fontSize: 13, fontWeight: "700", color: "#8a8073", textTransform: "uppercase", letterSpacing: 0.5 },
-  emptyText: { fontSize: 14, color: "#b3ab9c", fontStyle: "italic" },
-  taskRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#fff", borderRadius: 10, padding: 12 },
+  sectionTitle: {
+    fontFamily: fonts.sansBold,
+    fontSize: 12,
+    color: colors.mutedForeground,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
+  taskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    ...shadow,
+  },
   priorityDot: { width: 12, height: 12, borderRadius: 6 },
-  taskInfo: { flex: 1 },
-  taskTitle: { fontSize: 15, color: "#3a332c" },
-  taskTitleDone: { textDecorationLine: "line-through", color: "#b3ab9c" },
-  dueBadge: { fontSize: 11, marginTop: 2 },
-  pendingTag: { fontSize: 10, color: "#b3873a" },
+  taskInfo: { flex: 1, gap: 4 },
+  taskTitle: { fontFamily: fonts.sans, fontSize: 15, color: colors.foreground },
+  taskTitleDone: { textDecorationLine: "line-through", color: colors.mutedForeground },
+  dueBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
+  dueBadgeText: { fontFamily: fonts.sansMedium, fontSize: 11 },
+  pendingTag: { fontFamily: fonts.sansMedium, fontSize: 10, color: colors.warning },
   quickAddRow: { flexDirection: "row", gap: 8 },
-  quickAddInput: { flex: 1, backgroundColor: "#fff", borderRadius: 10, padding: 12, fontSize: 15 },
-  addButton: { width: 44, backgroundColor: "#5b6b4f", borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  addButtonText: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
-  modalSheet: { backgroundColor: "#faf7f2", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "88%" },
-  modalTitle: { fontSize: 20, fontWeight: "700", color: "#3a332c", marginBottom: 16 },
-  input: { borderWidth: 1, borderColor: "#ddd4c6", borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 15, backgroundColor: "#fff" },
+  quickAddInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.foreground,
+  },
+  addButton: { width: 44, backgroundColor: colors.primary, borderRadius: radius.input, alignItems: "center", justifyContent: "center" },
+  addButtonText: { color: colors.primaryForeground, fontSize: 20, fontFamily: fonts.sansBold },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(45,41,38,0.4)", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    padding: 20,
+    maxHeight: "88%",
+  },
+  modalTitle: { fontFamily: fonts.serif, fontSize: 24, color: colors.foreground, marginBottom: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.input,
+    padding: 12,
+    marginBottom: 12,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.foreground,
+    backgroundColor: colors.card,
+  },
   inputMultiline: { minHeight: 60, textAlignVertical: "top" },
-  fieldLabel: { fontSize: 13, fontWeight: "700", color: "#8a8073", marginBottom: 6 },
+  fieldLabel: {
+    fontFamily: fonts.sansBold,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    color: colors.mutedForeground,
+    marginBottom: 6,
+  },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#ddd4c6" },
-  chipSelected: { backgroundColor: "#5b6b4f", borderColor: "#5b6b4f" },
-  chipText: { fontSize: 13, color: "#3a332c" },
-  chipTextSelected: { color: "#fff" },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipSelected: { backgroundColor: colors.primaryTint, borderColor: colors.primary },
+  chipText: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
+  chipTextSelected: { fontFamily: fonts.sansMedium, color: colors.primary },
   dateRow: { flexDirection: "row", gap: 8, marginBottom: 12, alignItems: "center" },
-  dateButton: { flex: 1, borderWidth: 1, borderColor: "#ddd4c6", borderRadius: 12, padding: 12, backgroundColor: "#fff", alignItems: "center" },
-  dateButtonText: { fontSize: 14, color: "#3a332c" },
+  dateButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.input,
+    padding: 12,
+    backgroundColor: colors.card,
+    alignItems: "center",
+  },
+  dateButtonText: { fontFamily: fonts.sans, fontSize: 14, color: colors.foreground },
   clearDateButton: { padding: 8 },
-  clearDateButtonText: { fontSize: 13, color: "#b3432b" },
+  clearDateButtonText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.destructive },
   subtaskRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
   subtaskCheckRow: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
-  subtaskTitle: { fontSize: 14, color: "#3a332c", flexShrink: 1 },
-  checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: "#c9c0b0", alignItems: "center", justifyContent: "center" },
-  checkboxChecked: { backgroundColor: "#5b6b4f", borderColor: "#5b6b4f" },
-  checkboxMark: { color: "#fff", fontSize: 12, fontWeight: "700" },
-  deleteText: { fontSize: 12, color: "#b3432b" },
-  saveButton: { backgroundColor: "#5b6b4f", borderRadius: 12, padding: 16, alignItems: "center", marginTop: 12 },
-  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  subtaskTitle: { fontFamily: fonts.sans, fontSize: 14, color: colors.foreground, flexShrink: 1 },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.inputBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxMark: { color: colors.primaryForeground, fontSize: 12, fontFamily: fonts.sansBold },
+  deleteText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.destructive },
+  saveButton: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 15, alignItems: "center", marginTop: 12 },
+  saveButtonText: { fontFamily: fonts.sansMedium, color: colors.primaryForeground, fontSize: 15 },
   deleteButton: { alignItems: "center", padding: 14 },
-  deleteButtonText: { color: "#b3432b", fontSize: 14 },
+  deleteButtonText: { fontFamily: fonts.sansMedium, color: colors.destructive, fontSize: 14 },
   cancelButton: { alignItems: "center", padding: 10 },
-  cancelButtonText: { color: "#8a8073", fontSize: 14 },
+  cancelButtonText: { fontFamily: fonts.sans, color: colors.mutedForeground, fontSize: 14 },
 });

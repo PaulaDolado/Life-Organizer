@@ -1,17 +1,9 @@
 import { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  Switch,
-  Platform,
-  SafeAreaView,
-} from "react-native";
-import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Switch, Platform } from "react-native";
+// Ver el comentario de este mismo import en HoyScreen.tsx: el `SafeAreaView` de "react-native"
+// está deprecado, este es el reemplazo recomendado.
+import { SafeAreaView } from "react-native-safe-area-context";
+import DateTimePicker, { DateTimePickerChangeEvent } from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
 import { runSync } from "../sync";
 import { listExpandedEvents, createEventLocal, updateEventLocal, deleteEventLocal, ParsedEvent } from "../db/eventsRepo";
@@ -26,6 +18,7 @@ import {
   REMINDER_PRESETS_MINUTES,
   REMINDER_PRESET_LABELS,
 } from "../types";
+import { colors, eventTypeStyle, fonts, radius, shadow } from "../theme";
 
 // Etiquetas de día en el mismo criterio "clave UTC" que `todayKey()` usa en el resto de la app
 // (ver eventsRepo.ts) — una simplificación deliberada frente al manejo de timezone del backend
@@ -197,9 +190,9 @@ export function AgendaScreen() {
     sync();
   };
 
-  const onPickerChange = (field: "startTime" | "endTime", mode: "date" | "time") => (event: DateTimePickerEvent, selected?: Date) => {
+  const onPickerChange = (field: "startTime" | "endTime", mode: "date" | "time") => (_event: DateTimePickerChangeEvent, selected: Date) => {
     setPicker(null);
-    if (event.type !== "set" || !selected || !form) return;
+    if (!form) return;
     const current = new Date(form[field]);
     if (mode === "date") current.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
     else current.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
@@ -251,7 +244,11 @@ export function AgendaScreen() {
             </Text>
             <View style={styles.eventInfo}>
               <Text style={styles.eventTitle}>{occ.event.title}</Text>
-              <Text style={styles.eventType}>{EVENT_TYPE_LABELS[occ.event.type as EventType] ?? occ.event.type}</Text>
+              <View style={[styles.eventTypeBadge, { backgroundColor: eventTypeStyle(occ.event.type).bg }]}>
+                <Text style={[styles.eventTypeText, { color: eventTypeStyle(occ.event.type).text }]}>
+                  {EVENT_TYPE_LABELS[occ.event.type as EventType] ?? occ.event.type}
+                </Text>
+              </View>
               {occ.event.location ? <Text style={styles.eventLocation}>{occ.event.location}</Text> : null}
             </View>
             {occ.event.isRecurring && <Text style={styles.recurringBadge}>↻</Text>}
@@ -332,6 +329,8 @@ export function AgendaScreen() {
                   onValueChange={(v) => {
                     if (form) setForm({ ...form, isRecurring: v });
                   }}
+                  trackColor={{ false: colors.muted, true: colors.primary }}
+                  thumbColor={colors.card}
                 />
               </View>
               {form?.isRecurring && (
@@ -389,74 +388,151 @@ export function AgendaScreen() {
       </Modal>
 
       {form && picker === "start-date" && (
-        <DateTimePicker value={form.startTime} mode="date" display={Platform.OS === "ios" ? "inline" : "default"} onChange={onPickerChange("startTime", "date")} />
+        <DateTimePicker
+          value={form.startTime}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "default"}
+          onValueChange={onPickerChange("startTime", "date")}
+          onDismiss={() => setPicker(null)}
+        />
       )}
-      {form && picker === "start-time" && <DateTimePicker value={form.startTime} mode="time" display="default" onChange={onPickerChange("startTime", "time")} />}
+      {form && picker === "start-time" && (
+        <DateTimePicker
+          value={form.startTime}
+          mode="time"
+          display="default"
+          onValueChange={onPickerChange("startTime", "time")}
+          onDismiss={() => setPicker(null)}
+        />
+      )}
       {form && picker === "end-date" && (
-        <DateTimePicker value={form.endTime} mode="date" display={Platform.OS === "ios" ? "inline" : "default"} onChange={onPickerChange("endTime", "date")} />
+        <DateTimePicker
+          value={form.endTime}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "default"}
+          onValueChange={onPickerChange("endTime", "date")}
+          onDismiss={() => setPicker(null)}
+        />
       )}
-      {form && picker === "end-time" && <DateTimePicker value={form.endTime} mode="time" display="default" onChange={onPickerChange("endTime", "time")} />}
+      {form && picker === "end-time" && (
+        <DateTimePicker
+          value={form.endTime}
+          mode="time"
+          display="default"
+          onValueChange={onPickerChange("endTime", "time")}
+          onDismiss={() => setPicker(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#faf7f2" },
+  container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20, paddingBottom: 8 },
-  title: { fontSize: 26, fontWeight: "700", color: "#3a332c" },
+  title: { fontFamily: fonts.serif, fontSize: 30, color: colors.foreground },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 6 },
-  syncText: { fontSize: 12, color: "#8a8073" },
-  errorBanner: { fontSize: 12, color: "#b3432b", paddingHorizontal: 20, paddingBottom: 8 },
+  syncText: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive, paddingHorizontal: 20, paddingBottom: 8 },
   weekNav: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingBottom: 8 },
-  navButton: { fontSize: 13, color: "#8a8073" },
-  navButtonToday: { fontSize: 13, color: "#5b6b4f", fontWeight: "700" },
+  navButton: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
+  navButtonToday: { fontFamily: fonts.sansBold, fontSize: 13, color: colors.primary },
   weekStrip: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 8 },
-  dayChip: { alignItems: "center", padding: 8, borderRadius: 10, width: 42 },
-  dayChipSelected: { backgroundColor: "#5b6b4f" },
-  dayChipWeekday: { fontSize: 11, color: "#8a8073" },
-  dayChipNumber: { fontSize: 15, fontWeight: "700", color: "#3a332c", marginTop: 2 },
-  dayChipTextSelected: { color: "#fff" },
+  dayChip: { alignItems: "center", padding: 8, borderRadius: radius.input, width: 42 },
+  dayChipSelected: { backgroundColor: colors.primary },
+  dayChipWeekday: { fontFamily: fonts.sans, fontSize: 11, color: colors.mutedForeground },
+  dayChipNumber: { fontFamily: fonts.sansBold, fontSize: 15, color: colors.foreground, marginTop: 2 },
+  dayChipTextSelected: { color: colors.primaryForeground },
   list: { padding: 20, paddingTop: 8, gap: 10 },
-  emptyText: { fontSize: 14, color: "#b3ab9c", fontStyle: "italic" },
-  eventCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, padding: 14, gap: 12 },
-  eventTime: { fontSize: 12, color: "#8a8073", width: 76 },
-  eventInfo: { flex: 1 },
-  eventTitle: { fontSize: 15, fontWeight: "600", color: "#3a332c" },
-  eventType: { fontSize: 12, color: "#8a8073", marginTop: 2 },
-  eventLocation: { fontSize: 12, color: "#b3ab9c", marginTop: 2 },
-  recurringBadge: { fontSize: 16, color: "#5b6b4f" },
+  emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
+  eventCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    gap: 12,
+    ...shadow,
+  },
+  eventTime: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground, width: 76 },
+  eventInfo: { flex: 1, gap: 4 },
+  eventTitle: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: colors.foreground },
+  eventTypeBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.full },
+  eventTypeText: { fontFamily: fonts.sansMedium, fontSize: 11 },
+  eventLocation: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  recurringBadge: { fontSize: 16, color: colors.primary },
   fab: {
     position: "absolute",
     right: 20,
     bottom: 24,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: "#5b6b4f",
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 3,
+    ...shadow,
   },
-  fabText: { color: "#fff", fontSize: 28, fontWeight: "700", marginTop: -2 },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
-  modalSheet: { backgroundColor: "#faf7f2", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "88%" },
-  modalTitle: { fontSize: 20, fontWeight: "700", color: "#3a332c", marginBottom: 16 },
-  input: { borderWidth: 1, borderColor: "#ddd4c6", borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 15, backgroundColor: "#fff" },
+  fabText: { color: colors.primaryForeground, fontSize: 28, fontFamily: fonts.sansBold, marginTop: -2 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(45,41,38,0.4)", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    padding: 20,
+    maxHeight: "88%",
+  },
+  modalTitle: { fontFamily: fonts.serif, fontSize: 24, color: colors.foreground, marginBottom: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.input,
+    padding: 12,
+    marginBottom: 12,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.foreground,
+    backgroundColor: colors.card,
+  },
   inputMultiline: { minHeight: 60, textAlignVertical: "top" },
-  fieldLabel: { fontSize: 13, fontWeight: "700", color: "#8a8073", marginBottom: 6 },
+  fieldLabel: {
+    fontFamily: fonts.sansBold,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    color: colors.mutedForeground,
+    marginBottom: 6,
+  },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#ddd4c6" },
-  chipSelected: { backgroundColor: "#5b6b4f", borderColor: "#5b6b4f" },
-  chipText: { fontSize: 13, color: "#3a332c" },
-  chipTextSelected: { color: "#fff" },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipSelected: { backgroundColor: colors.primaryTint, borderColor: colors.primary },
+  chipText: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
+  chipTextSelected: { fontFamily: fonts.sansMedium, color: colors.primary },
   dateRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  dateButton: { flex: 1, borderWidth: 1, borderColor: "#ddd4c6", borderRadius: 12, padding: 12, backgroundColor: "#fff", alignItems: "center" },
-  dateButtonText: { fontSize: 14, color: "#3a332c" },
+  dateButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.input,
+    padding: 12,
+    backgroundColor: colors.card,
+    alignItems: "center",
+  },
+  dateButtonText: { fontFamily: fonts.sans, fontSize: 14, color: colors.foreground },
   switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  saveButton: { backgroundColor: "#5b6b4f", borderRadius: 12, padding: 16, alignItems: "center", marginTop: 8 },
-  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  saveButton: { backgroundColor: colors.primary, borderRadius: radius.full, padding: 15, alignItems: "center", marginTop: 8 },
+  saveButtonText: { fontFamily: fonts.sansMedium, color: colors.primaryForeground, fontSize: 15 },
   deleteButton: { alignItems: "center", padding: 14 },
-  deleteButtonText: { color: "#b3432b", fontSize: 14 },
+  deleteButtonText: { fontFamily: fonts.sansMedium, color: colors.destructive, fontSize: 14 },
   cancelButton: { alignItems: "center", padding: 10 },
-  cancelButtonText: { color: "#8a8073", fontSize: 14 },
+  cancelButtonText: { fontFamily: fonts.sans, color: colors.mutedForeground, fontSize: 14 },
 });
