@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -8,6 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from "@expo-google-fonts/outfit";
 import { InstrumentSerif_400Regular } from "@expo-google-fonts/instrument-serif";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
+import { AppSidebar } from "./src/navigation/AppSidebar";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { HoyScreen } from "./src/screens/HoyScreen";
 import { AgendaScreen } from "./src/screens/AgendaScreen";
@@ -17,25 +18,29 @@ import { ObjetivosScreen } from "./src/screens/ObjetivosScreen";
 import { FinanzasScreen } from "./src/screens/FinanzasScreen";
 import { MetasAhorroScreen } from "./src/screens/MetasAhorroScreen";
 import { PaginasScreen } from "./src/screens/PaginasScreen";
-import { colors, fonts } from "./src/theme";
+import { ProyectosScreen } from "./src/screens/ProyectosScreen";
+import { colors } from "./src/theme";
 
 // Mantiene la splash nativa visible hasta que las fuentes (ver más abajo) terminen de cargar —
 // llamada en scope global, no dentro de un componente, tal y como pide la propia documentación
 // de expo-splash-screen (si se llama demasiado tarde, la splash ya se habrá ocultado sola).
 SplashScreen.preventAutoHideAsync();
 
-// 8 pestañas planas (Hoy / Agenda / Planificador / Horario / Objetivos / Finanzas / Ahorro /
-// Páginas) — mismo criterio que el propio `FLAT_NAV` de
-// dashboard/src/components/AppShell.tsx: la web anida Planificador+Horario bajo Agenda y Metas de
-// ahorro bajo Finanzas en el menú de escritorio, pero los aplana en una lista para su propio menú
-// móvil ("donde anidar no tiene mucho sitio", dice su comentario) — aquí se sigue el mismo
-// criterio en vez de reinventar uno propio. Ver mobile/README.md para el resto de secciones de la
-// web que aún no tienen pantalla propia (Proyectos, Hobbies...). Horario, Objetivos, Finanzas,
-// Ahorro y Páginas son las únicas que NO pasan por SQLite (ver src/api/schedule.ts,
-// src/api/goals.ts, src/api/finance.ts, src/api/customPages.ts): necesitan conexión, igual que en
-// la propia web. Cada pantalla pinta su propia cabecera dentro de su SafeAreaView (headerShown:
-// false a nivel de pestañas), salvo "Páginas", que monta su propia pila anidada con cabecera
-// nativa para el detalle — ver PaginasScreen.tsx.
+// 9 pestañas (Hoy / Agenda / Planificador / Horario / Objetivos / Finanzas / Ahorro / Páginas /
+// Proyectos). El propio `<Tab.Navigator>` sigue siendo `createBottomTabNavigator` (gestiona el
+// estado/foco de cada pestaña igual que siempre), pero con `tabBarPosition: "left"` y un `tabBar`
+// personalizado (ver src/navigation/AppSidebar.tsx) se pinta como un menú lateral colapsable en
+// vez de la barra inferior — puerto del <aside> de escritorio
+// (dashboard/src/components/AppShell.tsx), que ahora SÍ agrupa Planificador+Horario bajo Agenda y
+// Ahorro bajo Finanzas igual que la web, en vez de aplanarlos como hacía la barra horizontal
+// anterior (ahí sí faltaba sitio para anidar; en una columna vertical no). Ver mobile/README.md
+// para el resto de secciones de la web que aún no tienen pantalla propia (Hobbies...). Horario,
+// Objetivos, Finanzas, Ahorro, Páginas y Proyectos son las únicas que NO pasan por SQLite (ver
+// src/api/schedule.ts, src/api/goals.ts, src/api/finance.ts, src/api/customPages.ts,
+// src/api/projects.ts): necesitan conexión, igual que en la propia web. Cada pantalla pinta su
+// propia cabecera dentro de su SafeAreaView (headerShown: false a nivel de pestañas), salvo
+// "Páginas" y "Proyectos", que montan su propia pila anidada con cabecera nativa para el detalle
+// — ver PaginasScreen.tsx / ProyectosScreen.tsx.
 export type RootTabParamList = {
   Hoy: undefined;
   Agenda: undefined;
@@ -45,20 +50,10 @@ export type RootTabParamList = {
   Finanzas: undefined;
   Ahorro: undefined;
   Páginas: undefined;
+  Proyectos: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
-
-const TAB_ICONS: Record<keyof RootTabParamList, string> = {
-  Hoy: "☀",
-  Agenda: "🗓",
-  Planificador: "📋",
-  Horario: "⏰",
-  Objetivos: "🎯",
-  Finanzas: "💰",
-  Ahorro: "🐷",
-  Páginas: "🖼",
-};
 
 function Root() {
   const { user, ready } = useAuth();
@@ -78,14 +73,11 @@ function Root() {
   return (
     <NavigationContainer>
       <Tab.Navigator
-        screenOptions={({ route }) => ({
+        tabBar={(props) => <AppSidebar {...props} />}
+        screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.mutedForeground,
-          tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
-          tabBarLabelStyle: { fontFamily: fonts.sansMedium, fontSize: 10 },
-          tabBarIcon: () => <Text style={{ fontSize: 16 }}>{TAB_ICONS[route.name as keyof RootTabParamList]}</Text>,
-        })}
+          tabBarPosition: "left",
+        }}
       >
         <Tab.Screen name="Hoy" component={HoyScreen} />
         <Tab.Screen name="Agenda" component={AgendaScreen} />
@@ -95,6 +87,7 @@ function Root() {
         <Tab.Screen name="Finanzas" component={FinanzasScreen} />
         <Tab.Screen name="Ahorro" component={MetasAhorroScreen} />
         <Tab.Screen name="Páginas" component={PaginasScreen} />
+        <Tab.Screen name="Proyectos" component={ProyectosScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
