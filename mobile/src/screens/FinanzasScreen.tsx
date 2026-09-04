@@ -20,11 +20,11 @@ import { colors, fonts, radius, shadow } from "../theme";
 import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 
 // Puerto directo de dashboard/src/pages/FinanzasPage.tsx — mismos datos (balance del mes,
-// movimientos, análisis, resumen de metas de ahorro). No pasa por SQLite: ver el comentario de
-// src/api/finance.ts para el porqué. Simplificaciones deliberadas frente a la web: sin
-// exportación CSV (descargar/compartir ficheros añade permisos y UI que no compensan para una
-// función secundaria) y sin el panel "Resumen del mes" duplicado (las tarjetas ya lo cubren en
-// una pantalla de una sola columna) — ver mobile/README.md.
+// movimientos, análisis, resumen de metas de ahorro) y mismos estilos de tarjeta (card-soft,
+// panel sólido bg-primary de "Resumen del mes", panel sólido bg-secondary de "Top categorías").
+// No pasa por SQLite: ver el comentario de src/api/finance.ts para el porqué. Simplificación
+// deliberada frente a la web: sin exportación CSV (descargar/compartir ficheros añade permisos y
+// UI que no compensan para una función secundaria) — ver mobile/README.md.
 
 function formatMoney(amount: number): string {
   return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(amount);
@@ -108,8 +108,10 @@ export function FinanzasScreen() {
                 value={formatMoney(balance?.balance ?? 0)}
                 color={(balance?.balance ?? 0) >= 0 ? colors.positive : colors.destructive}
               />
-              <SummaryCard label="Ahorro" value={formatMoney(savingsTotal)} color={colors.habit} />
-              <SummaryCard label="Inversión" value={formatMoney(investmentTotal)} color={colors.hobby} />
+              {/* Ahorro e Inversión usan el mismo verde que Ingresos en la web (tone="positive" en
+                  las cinco, ver FinanzasPage.tsx) — no un color por categoría propio. */}
+              <SummaryCard label="Ahorro" value={formatMoney(savingsTotal)} color={colors.positive} />
+              <SummaryCard label="Inversión" value={formatMoney(investmentTotal)} color={colors.positive} />
             </View>
 
             {analytics && analytics.monthlyTrend.length > 0 && (
@@ -137,12 +139,42 @@ export function FinanzasScreen() {
               </View>
             )}
 
+            {/* rounded-3xl bg-primary p-8 text-primary-foreground de la web ("Resumen del mes")
+                — antes se omitía a propósito por duplicar las tarjetas de arriba en una pantalla
+                de una sola columna (ver el comentario de cabecera), pero el usuario lo quiere de
+                vuelta con el mismo estilo que en la web, justo antes de "Top categorías". */}
+            {balance && (
+              <View style={styles.cardPrimary}>
+                <Text style={[styles.cardTitle, styles.cardTitlePrimary]}>Resumen del mes</Text>
+                <View style={{ gap: 16 }}>
+                  <View style={styles.summaryMonthRow}>
+                    <Text style={styles.summaryMonthLabel}>Ingresos</Text>
+                    <Text style={styles.summaryMonthValue}>+{formatMoney(balance.income)}</Text>
+                  </View>
+                  <View style={styles.summaryMonthRow}>
+                    <Text style={styles.summaryMonthLabel}>Gastos</Text>
+                    <Text style={styles.summaryMonthValue}>−{formatMoney(balance.expense)}</Text>
+                  </View>
+                  <View style={styles.summaryMonthDivider} />
+                  <View style={styles.summaryMonthRow}>
+                    <Text style={styles.summaryMonthNetLabel}>Saldo neto</Text>
+                    <Text style={styles.summaryMonthNetValue}>{formatMoney(balance.balance)}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {analytics && analytics.topCategories.length > 0 && (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Top categorías de gasto (este mes)</Text>
-                <View style={{ gap: 8 }}>
-                  {analytics.topCategories.map((c) => (
-                    <View key={c.category} style={styles.categoryRow}>
+              // rounded-3xl bg-secondary p-6 text-secondary-foreground de la web — fondo sólido
+              // arena, sin borde (a diferencia de card-soft, que sí lo lleva).
+              <View style={styles.cardSecondary}>
+                <Text style={[styles.cardTitle, styles.cardTitleSecondary]}>Top categorías de gasto (este mes)</Text>
+                <View>
+                  {analytics.topCategories.map((c, i) => (
+                    <View
+                      key={c.category}
+                      style={[styles.categoryRow, i < analytics.topCategories.length - 1 && styles.categoryRowDivider]}
+                    >
                       <Text style={styles.categoryName}>{c.category}</Text>
                       <Text style={styles.categoryAmount}>{formatMoney(c.total)}</Text>
                     </View>
@@ -162,29 +194,34 @@ export function FinanzasScreen() {
               </View>
             )}
 
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: 12 }}>
               <Text style={styles.sectionTitle}>Movimientos recientes</Text>
-              {transactions.length === 0 ? (
-                <Text style={styles.emptyText}>Sin movimientos todavía.</Text>
-              ) : (
-                transactions.map((t) => (
-                  <View key={t.id} style={styles.transactionRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.transactionTitle}>{t.description || t.category}</Text>
-                      <Text style={styles.transactionMeta}>
-                        {t.category} · {new Date(t.date).toLocaleDateString("es-ES")}
+              {/* overflow-hidden rounded-3xl border border-border bg-card de la web: UN recuadro
+                  contenedor con filas separadas por raya (border-b), no una tarjeta suelta por
+                  movimiento — y, a diferencia de card-soft, sin sombra. */}
+              <View style={styles.transactionsCard}>
+                {transactions.length === 0 ? (
+                  <Text style={styles.transactionsEmptyText}>Sin movimientos todavía.</Text>
+                ) : (
+                  transactions.map((t, i) => (
+                    <View key={t.id} style={[styles.transactionRow, i === transactions.length - 1 && styles.transactionRowLast]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.transactionTitle}>{t.description || t.category}</Text>
+                        <Text style={styles.transactionMeta}>
+                          {t.category} · {new Date(t.date).toLocaleDateString("es-ES")}
+                        </Text>
+                      </View>
+                      <Text style={[styles.transactionAmount, { color: t.type === "income" ? colors.positive : colors.destructive }]}>
+                        {t.type === "income" ? "+" : "-"}
+                        {formatMoney(t.amount)}
                       </Text>
+                      <Pressable onPress={() => handleDelete(t.id)} hitSlop={6}>
+                        <Text style={styles.deleteText}>Borrar</Text>
+                      </Pressable>
                     </View>
-                    <Text style={[styles.transactionAmount, { color: t.type === "income" ? colors.positive : colors.destructive }]}>
-                      {t.type === "income" ? "+" : "-"}
-                      {formatMoney(t.amount)}
-                    </Text>
-                    <Pressable onPress={() => handleDelete(t.id)}>
-                      <Text style={styles.deleteText}>Borrar</Text>
-                    </Pressable>
-                  </View>
-                ))
-              )}
+                  ))
+                )}
+              </View>
             </View>
           </>
         )}
@@ -261,17 +298,18 @@ const styles = StyleSheet.create({
   newButtonText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.background },
   content: { padding: 20, paddingTop: 8, gap: 16, paddingBottom: 40 },
   errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive },
-  emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
 
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  // card-soft de la web (rounded-3xl border-border bg-card shadow-soft) — antes llevaba
+  // radius.input (rounded-xl), un radio bastante más cerrado que el rounded-3xl real.
   summaryCard: {
     flexBasis: "31%",
     flexGrow: 1,
     backgroundColor: colors.card,
-    borderRadius: radius.input,
+    borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
+    padding: 16,
     gap: 4,
     ...shadow,
   },
@@ -284,14 +322,23 @@ const styles = StyleSheet.create({
   },
   summaryValue: { fontFamily: fonts.serif, fontSize: 18 },
 
+  // card-soft de la web — p-6 (24px), no los 16px que llevaba antes.
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
+    padding: 24,
     gap: 12,
     ...shadow,
+  },
+  // rounded-3xl bg-secondary p-6 text-secondary-foreground de la web ("Top categorías") — fondo
+  // sólido arena, sin borde ni sombra (a diferencia de `card`/card-soft).
+  cardSecondary: {
+    backgroundColor: colors.secondary,
+    borderRadius: radius.card,
+    padding: 24,
+    gap: 12,
   },
   cardTitle: {
     fontFamily: fonts.sansBold,
@@ -300,15 +347,35 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.mutedForeground,
   },
+  cardTitleSecondary: { color: colors.secondaryForeground },
+
+  // rounded-3xl bg-primary p-8 text-primary-foreground de la web ("Resumen del mes") — fondo
+  // sólido sage, sin borde ni sombra, más padding que card-soft (p-8=32 vs p-6=24).
+  cardPrimary: { backgroundColor: colors.primary, borderRadius: radius.card, padding: 32, gap: 12 },
+  cardTitlePrimary: { color: colors.primaryForeground, opacity: 0.6 },
+  summaryMonthRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  summaryMonthLabel: { fontFamily: fonts.sans, fontSize: 13, color: colors.primaryForeground, opacity: 0.8 },
+  summaryMonthValue: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.primaryForeground },
+  // h-px bg-primary-foreground/20 de la web.
+  summaryMonthDivider: { height: 1, backgroundColor: "rgba(251, 250, 247, 0.2)" },
+  summaryMonthNetLabel: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.primaryForeground },
+  summaryMonthNetValue: { fontFamily: fonts.serif, fontSize: 20, color: colors.primaryForeground },
   trendRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: 90 },
   trendBarWrap: { alignItems: "center", gap: 6, flex: 1 },
   trendBarTrack: { height: 64, justifyContent: "flex-end" },
   trendBar: { width: 18, borderRadius: 4 },
   trendLabel: { fontFamily: fonts.sans, fontSize: 10, color: colors.mutedForeground },
 
-  categoryRow: { flexDirection: "row", justifyContent: "space-between" },
-  categoryName: { fontFamily: fonts.sans, fontSize: 13, color: colors.foreground, textTransform: "capitalize" },
-  categoryAmount: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.destructive },
+  categoryRow: { flexDirection: "row", justifyContent: "space-between", paddingBottom: 8 },
+  // border-b border-secondary-foreground/15 pb-2 de la web (las filas van dentro de la tarjeta
+  // arena de arriba, así que la raya es del mismo tono que el texto, no del gris neutro de
+  // `colors.border`).
+  categoryRowDivider: { borderBottomWidth: 1, borderBottomColor: "rgba(45, 41, 38, 0.15)", marginBottom: 8 },
+  categoryName: { fontFamily: fonts.sans, fontSize: 13, color: colors.secondaryForeground, textTransform: "capitalize" },
+  // Sin rojo: la web deja el importe en el mismo color que el resto del texto (<strong>, sin
+  // clase de color) — todas las filas de este panel son gastos, así que un tono destructivo por
+  // fila sería redundante encima del propio título "Top categorías DE GASTO".
+  categoryAmount: { fontFamily: fonts.sansBold, fontSize: 13, color: colors.secondaryForeground },
 
   projectionText: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground, lineHeight: 19 },
 
@@ -319,16 +386,34 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
   },
+  // overflow-hidden rounded-3xl border border-border bg-card de la web — SIN shadow-soft (a
+  // diferencia de card-soft: la web no le pone sombra a este contenedor).
+  transactionsCard: {
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    overflow: "hidden",
+  },
+  transactionsEmptyText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.mutedForeground,
+    textAlign: "center",
+    padding: 32,
+  },
+  // border-b border-border px-6 py-4 last:border-b-0 de la web — cada fila es solo una raya
+  // divisoria dentro del recuadro de arriba, no su propia tarjeta con fondo/borde/radio.
   transactionRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: colors.card,
-    borderRadius: radius.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
+  transactionRowLast: { borderBottomWidth: 0 },
   transactionTitle: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.foreground },
   transactionMeta: { fontFamily: fonts.sans, fontSize: 11, color: colors.mutedForeground, textTransform: "capitalize" },
   transactionAmount: { fontFamily: fonts.sansBold, fontSize: 14 },

@@ -266,3 +266,23 @@ export interface LocalNote {
   synced: 0 | 1;
   pendingOp: "update" | "delete" | null;
 }
+
+// Colores disponibles para la leyenda del calendario anual (Horario > vista anual) — mismo
+// conjunto que dashboard/src/types.ts, ver mobile/src/utils/calendarColors.ts para su traducción
+// a los tokens RGB de theme.ts.
+export type CalendarColor = "primary" | "secondary" | "habit" | "hobby" | "positive" | "negative" | "warning" | "muted";
+
+// Categoría de la leyenda del calendario anual — compartida para toda la cuenta, no por horario/
+// trimestre (ver api/calendarLegend.ts: tampoco pasa por SQLite, igual que Schedule).
+export interface CalendarLegendCategory {
+  id: number;
+  label: string;
+  color: CalendarColor;
+  order: number;
+}
+
+// Un día del calendario anual pintado con una categoría.
+export interface CalendarDayMark {
+  date: string; // YYYY-MM-DD
+  categoryId: number;
+}

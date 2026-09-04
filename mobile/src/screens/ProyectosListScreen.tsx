@@ -8,12 +8,14 @@ import { addProjectTask, createProject, listProjects, Project, ProjectStatus } f
 import { colors, fonts, radius, shadow } from "../theme";
 import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 import { ProyectosStackParamList } from "./ProyectosScreen";
+import { FolderIcon } from "../components/FolderIcon";
 
 // Galería de proyectos — puerto de dashboard/src/pages/ProyectosPage.tsx. La web pinta cada
 // proyecto como la tapa de una carpeta de archivador (pestaña recortada, colores alternos); aquí
-// se simplifica a una lista de tarjetas (mismo criterio que PaginasListScreen.tsx) porque esa
-// pestaña es un recorte CSS bastante específico de web, no algo que valga la pena reproducir a
-// mano con Views — la chapa de estado y la descripción ya transmiten lo mismo de un vistazo.
+// se simplifica a una lista de tarjetas (mismo criterio que PaginasListScreen.tsx), pero con un
+// icono de carpeta (FolderIcon) que retoma esa misma idea — mismos dos tonos alternos que
+// `NotebookCover` (dashboard/src/pages/ProyectosPage.tsx): `colors.cover` (tapa marrón) /
+// `colors.secondary` (arena), sin inventar una paleta "carpeta amarilla" ajena a la web.
 const STATUS_LABELS: Record<ProjectStatus, string> = {
   idea: "Idea",
   en_curso: "En curso",
@@ -74,28 +76,35 @@ export function ProyectosListScreen({ navigation }: Props) {
         ) : projects.length === 0 ? (
           <Text style={styles.emptyText}>Todavía no tienes proyectos.</Text>
         ) : (
-          projects.map((project) => (
-            <Pressable
-              key={project.id}
-              style={styles.projectCard}
-              onPress={() => navigation.navigate("Detalle", { id: project.id, title: project.title })}
-            >
-              <View style={styles.projectHeader}>
-                <Text style={styles.projectTitle} numberOfLines={1}>
-                  {project.title}
-                </Text>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText}>{STATUS_LABELS[project.status]}</Text>
+          projects.map((project, index) => {
+            // Mismo alternado que `dark = i % 2 === 0` en NotebookCover (ProyectosPage.tsx): no
+            // hay color propio por proyecto en el modelo de datos (ni en la web ni en la API),
+            // así que el tono se alterna por posición, no por id.
+            const dark = index % 2 === 0;
+            return (
+              <Pressable
+                key={project.id}
+                style={styles.projectCard}
+                onPress={() => navigation.navigate("Detalle", { id: project.id, title: project.title })}
+              >
+                <View style={styles.projectHeader}>
+                  <FolderIcon size={40} color={dark ? colors.cover : colors.secondary} shade={dark ? colors.secondary : colors.cover} />
+                  <Text style={styles.projectTitle} numberOfLines={1}>
+                    {project.title}
+                  </Text>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusBadgeText}>{STATUS_LABELS[project.status]}</Text>
+                  </View>
                 </View>
-              </View>
-              {project.description && (
-                <Text style={styles.projectDescription} numberOfLines={2}>
-                  {project.description}
-                </Text>
-              )}
-              <Text style={styles.openHint}>Toca para abrir tus apuntes →</Text>
-            </Pressable>
-          ))
+                {project.description && (
+                  <Text style={styles.projectDescription} numberOfLines={2}>
+                    {project.description}
+                  </Text>
+                )}
+                <Text style={styles.openHint}>Toca para abrir tus apuntes →</Text>
+              </Pressable>
+            );
+          })
         )}
       </ScrollView>
 
@@ -160,7 +169,10 @@ const styles = StyleSheet.create({
     padding: 18,
     ...shadow,
   },
-  projectHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 10 },
+  // alignItems "center" (no "flex-start" como antes) — con el FolderIcon (más alto que una línea
+  // de texto) al principio de la fila, "flex-start" dejaba el título y la chapa de estado
+  // pegados arriba mientras el icono se extendía varios px por debajo, descentrados entre sí.
+  projectHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   projectTitle: { flex: 1, minWidth: 0, fontFamily: fonts.serif, fontSize: 20, color: colors.foreground },
   statusBadge: { backgroundColor: colors.muted, borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 3 },
   statusBadgeText: { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.mutedForeground },

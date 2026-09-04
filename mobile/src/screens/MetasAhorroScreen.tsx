@@ -239,14 +239,26 @@ function BoxesGrid({ goal, limit, onContribute }: { goal: SavingsGoal; limit: nu
     <View style={styles.boxesGrid}>
       {Array.from({ length: boxCount }, (_, i) => {
         const isFilled = i < filled;
-        const isMilestone = (i + 1) % 10 === 0;
+        // Mismo criterio que el ternario de dashboard/src/components/SavingsGoals.tsx: "llena" y
+        // "milestone" son estados EXCLUYENTES, no combinables — antes ambos estilos se aplicaban
+        // a la vez sobre una casilla llena que también fuera milestone (cada 10), y como
+        // `boxMilestone` iba después en el array de estilos, le pisaba el fondo verde sólido con
+        // el tinte claro, deshaciendo visualmente su propio "conseguida".
+        const isMilestone = !isFilled && (i + 1) % 10 === 0;
         return (
           <Pressable
             key={i}
-            style={[styles.box, isFilled && styles.boxFilled, isMilestone && styles.boxMilestone]}
+            style={[styles.box, isFilled ? styles.boxFilled : isMilestone && styles.boxMilestone]}
             onPress={() => handlePress(i)}
           >
-            <Text style={[styles.boxText, isFilled && styles.boxTextFilled, isFilled && styles.boxTextStrike]}>{boxLabel((i + 1) * step)}</Text>
+            <Text
+              style={[
+                styles.boxText,
+                isFilled ? [styles.boxTextFilled, styles.boxTextStrike] : isMilestone && styles.boxTextMilestone,
+              ]}
+            >
+              {boxLabel((i + 1) * step)}
+            </Text>
           </Pressable>
         );
       })}
@@ -363,12 +375,13 @@ const styles = StyleSheet.create({
   errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive },
   emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
 
+  // card-soft de la web — p-6 (24px), no los 16px que llevaba antes.
   overviewCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
+    padding: 24,
     gap: 12,
     ...shadow,
   },
@@ -379,7 +392,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.mutedForeground,
   },
-  overviewRow: { backgroundColor: colors.background, borderRadius: radius.input, padding: 12, gap: 6 },
+  // rounded-2xl border border-border bg-background p-4 de la web (MetasAhorroPage.tsx) — antes
+  // no llevaba borde y usaba radius.input (rounded-xl, más cerrado que el rounded-2xl real).
+  overviewRow: { backgroundColor: colors.background, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 6 },
   overviewRowHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
   overviewRowTitle: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.foreground, flexShrink: 1 },
   overviewPercent: { fontFamily: fonts.serif, fontSize: 18 },
@@ -394,12 +409,13 @@ const styles = StyleSheet.create({
   tabChipText: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
   tabChipTextSelected: { fontFamily: fonts.sansMedium, color: colors.primaryForeground },
 
+  // card-soft de la web — p-6 (24px), no los 16px que llevaba antes.
   goalCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
+    padding: 24,
     gap: 12,
     ...shadow,
   },
@@ -421,10 +437,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   boxFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
-  boxMilestone: { borderWidth: 2 },
+  // border-primary/40 bg-primary/15 font-bold de la web — antes solo engordaba el borde
+  // (borderWidth:2) sin tinte, así que una casilla milestone casi no se distinguía de una vacía.
+  boxMilestone: { borderColor: "rgba(95, 113, 97, 0.4)", backgroundColor: colors.primaryTint },
   boxText: { fontFamily: fonts.sansMedium, fontSize: 10, color: colors.mutedForeground },
   boxTextFilled: { color: colors.primaryForeground },
   boxTextStrike: { textDecorationLine: "line-through" },
+  boxTextMilestone: { fontFamily: fonts.sansBold, color: colors.foreground },
   seeAllText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
 
   deleteLink: { alignSelf: "flex-end" },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { listRecentEntries, RecentProjectEntry } from "../api/projects";
-import { colors, fonts, radius, shadow } from "../theme";
+import { colors, fonts, radius } from "../theme";
 
 // Puerto de dashboard/src/components/RecentEntriesCard.tsx — últimas páginas de libreta tocadas
 // (ver GET /projects/recent-entries), en la vista "Hoy". Sin estado vacío explícito: si no hay
@@ -70,14 +70,14 @@ export function RecentEntriesCard() {
 }
 
 const styles = StyleSheet.create({
-  // rounded-3xl border-border bg-card p-6 de la web (tarjeta neutra, sin tinte de color).
+  // rounded-3xl border-border bg-card p-6 de la web (tarjeta neutra, sin tinte de color). Sin
+  // sombra a propósito — ver el comentario en el estilo `section` de HoyScreen.tsx.
   card: {
     borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
     padding: 24,
-    ...shadow,
   },
   title: {
     fontFamily: fonts.sansBold,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as SecureStore from "expo-secure-store";
 import { useFocusEffect } from "@react-navigation/native";
 import { ApiError } from "../api/client";
 import {
@@ -22,13 +23,18 @@ import {
 } from "../api/schedule";
 import { colors, fonts, radius, shadow } from "../theme";
 import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
+import { AnnualCalendarLegend } from "../components/AnnualCalendarLegend";
 
 // Puerto directo de dashboard/src/pages/SchedulePage.tsx — mismo modelo (Schedule con nombre
 // propio + ScheduleRow de texto libre lunes-viernes, sin fechas). Como Objetivos, no pasa por
-// SQLite: ver el comentario de src/api/schedule.ts para el porqué. Simplificaciones deliberadas
-// frente a la web: solo modo "Flechas" (un horario a la vez — más natural en pantalla estrecha
-// que "Apilado"), y sin el calendario anual con leyenda (`AnnualCalendarLegend`, un componente
-// aparte sin relación con un horario concreto) — quedan documentadas en mobile/README.md.
+// SQLite: ver el comentario de cabecera de src/api/schedule.ts para el porqué. Con paridad
+// completa con la web: los dos modos de vista ("Flechas" — un horario a la vez — y "Apilado" —
+// todos uno debajo de otro) y el calendario anual con leyenda (AnnualCalendarLegend) debajo.
+// Simplificación deliberada frente a la web: los borrados (horario/franja) son de un solo toque,
+// sin el "¿Confirmar?" de doble clic — ese patrón depende de un hover que no existe en táctil.
+
+const VIEW_MODE_KEY = "life-organizer.schedule-view-mode";
+type ViewMode = "flechas" | "apilado";
 
 export function HorarioScreen() {
   const { collapsed } = useSidebar();
@@ -44,8 +50,23 @@ export function HorarioScreen() {
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [pendingFocusId, setPendingFocusId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("flechas");
 
   const active = schedules[activeIndex] ?? null;
+
+  // Preferencia persistida — equivalente móvil del `localStorage` que usa SchedulePage.tsx, pero
+  // asíncrono (SecureStore), así que arranca en "flechas" y cambia en cuanto carga el valor
+  // guardado (si lo hay).
+  useEffect(() => {
+    SecureStore.getItemAsync(VIEW_MODE_KEY).then((stored) => {
+      if (stored === "apilado" || stored === "flechas") setViewMode(stored);
+    });
+  }, []);
+
+  const changeViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    SecureStore.setItemAsync(VIEW_MODE_KEY, mode);
+  };
 
   const reloadSchedules = useCallback(async () => {
     setLoadingSchedules(true);
@@ -163,6 +184,21 @@ export function HorarioScreen() {
     await reloadRows(active.id);
   };
 
+  // Versiones "por id" de las acciones de arriba, para el modo Apilado: ahí cada
+  // ScheduleTableCard gestiona su propio horario, no el `active` de la vista Flechas.
+  const renameScheduleById = async (id: number, name: string) => {
+    await renameSchedule(id, name);
+    await reloadSchedules();
+  };
+  const deleteScheduleById = async (id: number) => {
+    await deleteSchedule(id);
+    await reloadSchedules();
+  };
+  const moveScheduleById = async (id: number, direction: "up" | "down") => {
+    await moveSchedule(id, direction);
+    await reloadSchedules();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={[styles.header, collapsed && { paddingLeft: SIDEBAR_CLIP_CLEARANCE }]}>
@@ -172,131 +208,113 @@ export function HorarioScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.viewModeRow}>
+        <View style={styles.viewModePill}>
+          <Pressable
+            style={[styles.viewModeButton, viewMode === "flechas" && styles.viewModeButtonActive]}
+            onPress={() => changeViewMode("flechas")}
+          >
+            <Text style={[styles.viewModeButtonText, viewMode === "flechas" && styles.viewModeButtonTextActive]}>Flechas</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.viewModeButton, viewMode === "apilado" && styles.viewModeButtonActive]}
+            onPress={() => changeViewMode("apilado")}
+          >
+            <Text style={[styles.viewModeButtonText, viewMode === "apilado" && styles.viewModeButtonTextActive]}>Apilado</Text>
+          </Pressable>
+        </View>
+      </View>
+
       {error && <Text style={styles.errorBanner}>{error}</Text>}
 
-      {loadingSchedules && schedules.length === 0 ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
-      ) : schedules.length === 0 ? (
-        <View style={styles.content}>
-          <Text style={styles.emptyText}>Aún no tienes ningún horario. Crea uno para empezar.</Text>
-        </View>
-      ) : (
-        <>
-          <View style={styles.nav}>
-            <Pressable disabled={activeIndex === 0} onPress={() => setActiveIndex((i) => i - 1)}>
-              <Text style={[styles.navArrow, activeIndex === 0 && styles.navArrowDisabled]}>‹</Text>
-            </Pressable>
-
-            {renaming ? (
-              <TextInput
-                style={styles.nameInput}
-                value={nameDraft}
-                onChangeText={setNameDraft}
-                onBlur={handleRename}
-                onSubmitEditing={handleRename}
-                autoFocus
-              />
-            ) : (
-              <Pressable
-                style={styles.nameButton}
-                onPress={() => {
-                  setNameDraft(active?.name ?? "");
-                  setRenaming(true);
-                }}
-              >
-                <Text style={styles.navTitle}>{active?.name}</Text>
-              </Pressable>
-            )}
-
-            <Pressable disabled={activeIndex >= schedules.length - 1} onPress={() => setActiveIndex((i) => i + 1)}>
-              <Text style={[styles.navArrow, activeIndex >= schedules.length - 1 && styles.navArrowDisabled]}>›</Text>
-            </Pressable>
+      <ScrollView contentContainerStyle={styles.screenScroll}>
+        {loadingSchedules && schedules.length === 0 ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+        ) : schedules.length === 0 ? (
+          <View style={styles.content}>
+            <Text style={styles.emptyText}>Aún no tienes ningún horario. Crea uno para empezar.</Text>
           </View>
+        ) : viewMode === "flechas" ? (
+          <>
+            <View style={styles.nav}>
+              <Pressable disabled={activeIndex === 0} onPress={() => setActiveIndex((i) => i - 1)}>
+                <Text style={[styles.navArrow, activeIndex === 0 && styles.navArrowDisabled]}>‹</Text>
+              </Pressable>
 
-          <View style={styles.toolbar}>
-            <Text style={styles.toolbarHint}>
-              {activeIndex + 1} de {schedules.length}
-            </Text>
-            <View style={styles.toolbarActions}>
-              <Pressable onPress={() => handleMoveSchedule("up")} disabled={activeIndex === 0}>
-                <Text style={[styles.toolbarAction, activeIndex === 0 && styles.navArrowDisabled]}>↑</Text>
-              </Pressable>
-              <Pressable onPress={() => handleMoveSchedule("down")} disabled={activeIndex >= schedules.length - 1}>
-                <Text style={[styles.toolbarAction, activeIndex >= schedules.length - 1 && styles.navArrowDisabled]}>↓</Text>
-              </Pressable>
-              <Pressable onPress={handleDeleteSchedule}>
-                <Text style={[styles.toolbarAction, styles.toolbarDelete]}>Eliminar horario</Text>
+              {renaming ? (
+                <TextInput
+                  style={styles.nameInput}
+                  value={nameDraft}
+                  onChangeText={setNameDraft}
+                  onBlur={handleRename}
+                  onSubmitEditing={handleRename}
+                  autoFocus
+                />
+              ) : (
+                <Pressable
+                  style={styles.nameButton}
+                  onPress={() => {
+                    setNameDraft(active?.name ?? "");
+                    setRenaming(true);
+                  }}
+                >
+                  <Text style={styles.navTitle}>{active?.name}</Text>
+                </Pressable>
+              )}
+
+              <Pressable disabled={activeIndex >= schedules.length - 1} onPress={() => setActiveIndex((i) => i + 1)}>
+                <Text style={[styles.navArrow, activeIndex >= schedules.length - 1 && styles.navArrowDisabled]}>›</Text>
               </Pressable>
             </View>
-          </View>
 
-          {rowError && <Text style={styles.errorBanner}>{rowError}</Text>}
-
-          {loadingRows ? (
-            <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
-          ) : (
-            <ScrollView horizontal contentContainerStyle={styles.tableScroll} showsHorizontalScrollIndicator>
-              <View style={styles.table}>
-                <View style={styles.tableHeaderRow}>
-                  <View style={[styles.cell, styles.timeCell]}>
-                    <Text style={styles.headerText}>Hora</Text>
-                  </View>
-                  {DAY_KEYS.map((key) => (
-                    <View key={key} style={[styles.cell, styles.dayCell]}>
-                      <Text style={styles.headerText}>{DAY_LABELS[key]}</Text>
-                    </View>
-                  ))}
-                  <View style={[styles.cell, styles.actionsCell]} />
-                </View>
-
-                {rows.map((row, index) => (
-                  <View key={row.id} style={styles.tableRow}>
-                    <View style={[styles.cell, styles.timeCell]}>
-                      <TextInput
-                        style={styles.timeCellInput}
-                        value={row.timeLabel}
-                        placeholder="08:00 - 10:00"
-                        placeholderTextColor={colors.mutedForeground}
-                        multiline
-                        onChangeText={(v) => updateLocalCell(row.id, "timeLabel", v)}
-                        onBlur={() => persistCell(row.id, "timeLabel", row.timeLabel)}
-                      />
-                    </View>
-                    {DAY_KEYS.map((key) => (
-                      <View key={key} style={[styles.cell, styles.dayCell]}>
-                        <TextInput
-                          style={styles.dayCellInput}
-                          value={row[key]}
-                          placeholder="—"
-                          placeholderTextColor={colors.border}
-                          multiline
-                          onChangeText={(v) => updateLocalCell(row.id, key, v)}
-                          onBlur={() => persistCell(row.id, key, row[key])}
-                        />
-                      </View>
-                    ))}
-                    <View style={[styles.cell, styles.actionsCell]}>
-                      <Pressable onPress={() => handleMoveRow(row.id, "up")} disabled={index === 0}>
-                        <Text style={[styles.rowAction, index === 0 && styles.navArrowDisabled]}>↑</Text>
-                      </Pressable>
-                      <Pressable onPress={() => handleMoveRow(row.id, "down")} disabled={index === rows.length - 1}>
-                        <Text style={[styles.rowAction, index === rows.length - 1 && styles.navArrowDisabled]}>↓</Text>
-                      </Pressable>
-                      <Pressable onPress={() => handleDeleteRow(row.id)}>
-                        <Text style={[styles.rowAction, styles.toolbarDelete]}>✕</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-
-                <Pressable style={styles.addRowButton} onPress={handleAddRow}>
-                  <Text style={styles.addRowButtonText}>+ Añadir franja horaria</Text>
+            <View style={styles.toolbar}>
+              <Text style={styles.toolbarHint}>
+                {activeIndex + 1} de {schedules.length}
+              </Text>
+              <View style={styles.toolbarActions}>
+                <Pressable onPress={() => handleMoveSchedule("up")} disabled={activeIndex === 0}>
+                  <Text style={[styles.toolbarAction, activeIndex === 0 && styles.navArrowDisabled]}>↑</Text>
+                </Pressable>
+                <Pressable onPress={() => handleMoveSchedule("down")} disabled={activeIndex >= schedules.length - 1}>
+                  <Text style={[styles.toolbarAction, activeIndex >= schedules.length - 1 && styles.navArrowDisabled]}>↓</Text>
+                </Pressable>
+                <Pressable onPress={handleDeleteSchedule}>
+                  <Text style={[styles.toolbarAction, styles.toolbarDelete]}>Eliminar horario</Text>
                 </Pressable>
               </View>
-            </ScrollView>
-          )}
-        </>
-      )}
+            </View>
+
+            {rowError && <Text style={styles.errorBanner}>{rowError}</Text>}
+
+            <ScheduleTableGrid
+              rows={rows}
+              loading={loadingRows}
+              onCellChange={updateLocalCell}
+              onCellBlur={persistCell}
+              onAddRow={handleAddRow}
+              onDeleteRow={handleDeleteRow}
+              onMoveRow={handleMoveRow}
+            />
+          </>
+        ) : (
+          <View style={styles.stackedList}>
+            {schedules.map((schedule, index) => (
+              <ScheduleTableCard
+                key={schedule.id}
+                schedule={schedule}
+                canMoveUp={index > 0}
+                canMoveDown={index < schedules.length - 1}
+                onRename={(name) => renameScheduleById(schedule.id, name)}
+                onDelete={() => deleteScheduleById(schedule.id)}
+                onMoveUp={() => moveScheduleById(schedule.id, "up")}
+                onMoveDown={() => moveScheduleById(schedule.id, "down")}
+              />
+            ))}
+          </View>
+        )}
+
+        <AnnualCalendarLegend />
+      </ScrollView>
 
       <Modal visible={showCreate} animationType="slide" transparent onRequestClose={() => setShowCreate(false)}>
         <View style={styles.modalBackdrop}>
@@ -316,6 +334,229 @@ export function HorarioScreen() {
   );
 }
 
+/** Tabla lunes-viernes pura: recibe `rows` ya cargadas y solo dispara los callbacks — la usan
+ * tanto el modo Flechas (rows del `active` de arriba) como cada ScheduleTableCard del modo
+ * Apilado (rows propias de ese horario), evitando duplicar el marcado de la tabla dos veces. */
+function ScheduleTableGrid({
+  rows,
+  loading,
+  onCellChange,
+  onCellBlur,
+  onAddRow,
+  onDeleteRow,
+  onMoveRow,
+}: {
+  rows: ScheduleRow[];
+  loading: boolean;
+  onCellChange: (rowId: number, field: DayKey | "timeLabel", value: string) => void;
+  onCellBlur: (rowId: number, field: DayKey | "timeLabel", value: string) => void;
+  onAddRow: () => void;
+  onDeleteRow: (rowId: number) => void;
+  onMoveRow: (rowId: number, direction: "up" | "down") => void;
+}) {
+  if (loading) return <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />;
+
+  return (
+    <ScrollView horizontal contentContainerStyle={styles.tableScroll} showsHorizontalScrollIndicator>
+      <View style={styles.table}>
+        <View style={styles.tableHeaderRow}>
+          <View style={[styles.cell, styles.timeCell]}>
+            <Text style={styles.headerText}>Hora</Text>
+          </View>
+          {DAY_KEYS.map((key) => (
+            <View key={key} style={[styles.cell, styles.dayCell]}>
+              <Text style={styles.headerText}>{DAY_LABELS[key]}</Text>
+            </View>
+          ))}
+          <View style={[styles.cell, styles.actionsCell]} />
+        </View>
+
+        {rows.map((row, index) => (
+          <View key={row.id} style={styles.tableRow}>
+            <View style={[styles.cell, styles.timeCell]}>
+              <TextInput
+                style={styles.timeCellInput}
+                value={row.timeLabel}
+                placeholder="08:00 - 10:00"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                onChangeText={(v) => onCellChange(row.id, "timeLabel", v)}
+                onBlur={() => onCellBlur(row.id, "timeLabel", row.timeLabel)}
+              />
+            </View>
+            {DAY_KEYS.map((key) => (
+              <View key={key} style={[styles.cell, styles.dayCell]}>
+                <TextInput
+                  style={styles.dayCellInput}
+                  value={row[key]}
+                  placeholder="—"
+                  placeholderTextColor={colors.border}
+                  multiline
+                  onChangeText={(v) => onCellChange(row.id, key, v)}
+                  onBlur={() => onCellBlur(row.id, key, row[key])}
+                />
+              </View>
+            ))}
+            <View style={[styles.cell, styles.actionsCell]}>
+              <Pressable onPress={() => onMoveRow(row.id, "up")} disabled={index === 0}>
+                <Text style={[styles.rowAction, index === 0 && styles.navArrowDisabled]}>↑</Text>
+              </Pressable>
+              <Pressable onPress={() => onMoveRow(row.id, "down")} disabled={index === rows.length - 1}>
+                <Text style={[styles.rowAction, index === rows.length - 1 && styles.navArrowDisabled]}>↓</Text>
+              </Pressable>
+              <Pressable onPress={() => onDeleteRow(row.id)}>
+                <Text style={[styles.rowAction, styles.toolbarDelete]}>✕</Text>
+              </Pressable>
+            </View>
+          </View>
+        ))}
+
+        <Pressable style={styles.addRowButton} onPress={onAddRow}>
+          <Text style={styles.addRowButtonText}>+ Añadir franja horaria</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+/** Un horario completo (título propio + su ScheduleTableGrid) del modo Apilado — puerto de
+ * ScheduleTable en dashboard/src/pages/SchedulePage.tsx: a diferencia del modo Flechas (que
+ * comparte el `rows`/`reloadRows` de HorarioScreen), aquí cada tarjeta carga y guarda sus propias
+ * filas, porque en Apilado hay varios horarios visibles a la vez. */
+function ScheduleTableCard({
+  schedule,
+  canMoveUp,
+  canMoveDown,
+  onRename,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+}: {
+  schedule: Schedule;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(schedule.name);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      setRows(await listRows(schedule.id));
+      setRowError(null);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No se pudo cargar el horario");
+    } finally {
+      setLoading(false);
+    }
+  }, [schedule.id]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  useEffect(() => {
+    setNameDraft(schedule.name);
+  }, [schedule.name]);
+
+  const updateLocalCell = (rowId: number, field: DayKey | "timeLabel", value: string) => {
+    setRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, [field]: value } : r)));
+  };
+
+  const persistCell = async (rowId: number, field: DayKey | "timeLabel", value: string) => {
+    try {
+      await updateRow(schedule.id, rowId, { [field]: value });
+      setRowError(null);
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "No se pudo guardar el cambio");
+    }
+  };
+
+  const handleAddRow = async () => {
+    await addRow(schedule.id);
+    await reload();
+  };
+
+  const handleDeleteRow = async (rowId: number) => {
+    await deleteRow(schedule.id, rowId);
+    await reload();
+  };
+
+  const handleMoveRow = async (rowId: number, direction: "up" | "down") => {
+    await moveRow(schedule.id, rowId, direction);
+    await reload();
+  };
+
+  const handleRename = () => {
+    const trimmed = nameDraft.trim();
+    setRenaming(false);
+    if (!trimmed || trimmed === schedule.name) {
+      setNameDraft(schedule.name);
+      return;
+    }
+    onRename(trimmed);
+  };
+
+  return (
+    <View>
+      <View style={styles.stackedHeader}>
+        {renaming ? (
+          <TextInput
+            style={styles.stackedNameInput}
+            value={nameDraft}
+            onChangeText={setNameDraft}
+            onBlur={handleRename}
+            onSubmitEditing={handleRename}
+            autoFocus
+          />
+        ) : (
+          <Pressable
+            style={styles.stackedTitleButton}
+            onPress={() => {
+              setNameDraft(schedule.name);
+              setRenaming(true);
+            }}
+          >
+            <Text style={styles.stackedTitle} numberOfLines={1}>
+              {schedule.name}
+            </Text>
+          </Pressable>
+        )}
+        <View style={styles.toolbarActions}>
+          <Pressable onPress={onMoveUp} disabled={!canMoveUp}>
+            <Text style={[styles.toolbarAction, !canMoveUp && styles.navArrowDisabled]}>↑</Text>
+          </Pressable>
+          <Pressable onPress={onMoveDown} disabled={!canMoveDown}>
+            <Text style={[styles.toolbarAction, !canMoveDown && styles.navArrowDisabled]}>↓</Text>
+          </Pressable>
+          <Pressable onPress={onDelete}>
+            <Text style={[styles.toolbarAction, styles.toolbarDelete]}>Eliminar horario</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {rowError && <Text style={styles.errorBanner}>{rowError}</Text>}
+
+      <ScheduleTableGrid
+        rows={rows}
+        loading={loading}
+        onCellChange={updateLocalCell}
+        onCellBlur={persistCell}
+        onAddRow={handleAddRow}
+        onDeleteRow={handleDeleteRow}
+        onMoveRow={handleMoveRow}
+      />
+    </View>
+  );
+}
+
 const TIME_COL_WIDTH = 96;
 const DAY_COL_WIDTH = 128;
 const ACTIONS_COL_WIDTH = 60;
@@ -329,6 +570,24 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   errorBanner: { fontFamily: fonts.sans, fontSize: 12, color: colors.destructive, paddingHorizontal: 20, paddingBottom: 8 },
   emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
+
+  // rounded-full border border-border p-1 de la web (SchedulePage.tsx) — el toggle Flechas/Apilado.
+  viewModeRow: { paddingHorizontal: 20, paddingBottom: 8 },
+  viewModePill: {
+    flexDirection: "row",
+    alignSelf: "flex-start",
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 3,
+    gap: 2,
+  },
+  viewModeButton: { borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  viewModeButtonActive: { backgroundColor: colors.primary },
+  viewModeButtonText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.mutedForeground },
+  viewModeButtonTextActive: { color: colors.primaryForeground },
+
+  screenScroll: { paddingBottom: 20 },
 
   nav: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, paddingHorizontal: 20 },
   navArrow: { fontFamily: fonts.sansBold, fontSize: 24, color: colors.mutedForeground },
@@ -357,6 +616,30 @@ const styles = StyleSheet.create({
   toolbarActions: { flexDirection: "row", alignItems: "center", gap: 16 },
   toolbarAction: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.mutedForeground },
   toolbarDelete: { color: colors.destructive },
+
+  // ========== MODO APILADO ==========
+  stackedList: { gap: 28 },
+  stackedHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  stackedTitleButton: { flexShrink: 1, minWidth: 0 },
+  stackedTitle: { fontFamily: fonts.serif, fontSize: 22, color: colors.foreground },
+  stackedNameInput: {
+    flex: 1,
+    minWidth: 120,
+    fontFamily: fonts.serif,
+    fontSize: 22,
+    color: colors.foreground,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.primary,
+    paddingVertical: 2,
+  },
 
   tableScroll: { paddingHorizontal: 20, paddingBottom: 30 },
   table: {

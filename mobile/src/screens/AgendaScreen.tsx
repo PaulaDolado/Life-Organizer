@@ -20,6 +20,10 @@ import {
 } from "../types";
 import { colors, eventTypeStyle, fonts, radius, shadow } from "../theme";
 import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
+import { HabitsCard } from "../components/HabitsCard";
+import { RecentEntriesCard } from "../components/RecentEntriesCard";
+import { GoalsProgressCard } from "../components/GoalsProgressCard";
+import { QuickNotesCard } from "../components/QuickNotesCard";
 
 // Etiquetas de día en el mismo criterio "clave UTC" que `todayKey()` usa en el resto de la app
 // (ver eventsRepo.ts) — una simplificación deliberada frente al manejo de timezone del backend
@@ -256,6 +260,15 @@ export function AgendaScreen() {
             {occ.event.isRecurring && <Text style={styles.recurringBadge}>↻</Text>}
           </Pressable>
         ))}
+
+        {/* Debajo de la vista semanal: mismos bloques que la web (dashboard/src/pages/AgendaPage.tsx),
+            apilados en una sola columna en vez de la rejilla de dos columnas de escritorio. */}
+        <View style={styles.extraSections}>
+          <HabitsCard />
+          <RecentEntriesCard />
+          <GoalsProgressCard />
+          <QuickNotesCard />
+        </View>
       </ScrollView>
 
       <Pressable style={styles.fab} onPress={openCreate}>
@@ -446,6 +459,7 @@ const styles = StyleSheet.create({
   dayChipNumber: { fontFamily: fonts.sansBold, fontSize: 15, color: colors.foreground, marginTop: 2 },
   dayChipTextSelected: { color: colors.primaryForeground },
   list: { padding: 20, paddingTop: 8, gap: 10 },
+  extraSections: { gap: 20, marginTop: 16, paddingBottom: 12 },
   emptyText: { fontFamily: fonts.sans, fontSize: 14, color: colors.mutedForeground, fontStyle: "italic" },
   eventCard: {
     flexDirection: "row",

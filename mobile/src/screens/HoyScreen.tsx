@@ -10,7 +10,7 @@ import { listHabits, isHabitDoneToday, toggleHabitToday } from "../db/habitsRepo
 import { listNotes, createNoteLocal, toggleNoteChecked, deleteNoteLocal } from "../db/notesRepo";
 import { EventOccurrence } from "../utils/recurrence";
 import { LocalHabit, LocalNote, LocalTask } from "../types";
-import { colors, fonts, radius, shadow, eventTypeStyle } from "../theme";
+import { colors, fonts, radius, eventTypeStyle } from "../theme";
 import { useSidebar, SIDEBAR_CLIP_CLEARANCE } from "../navigation/SidebarContext";
 import { QuickAccessCard } from "../components/QuickAccessCard";
 import { RecentEntriesCard } from "../components/RecentEntriesCard";
@@ -434,7 +434,6 @@ function Section({
           borderColor: sectionStyle.borderColor,
           borderWidth: sectionStyle.borderWidth,
         },
-        shadow,
       ]}
     >
       <Text style={[styles.sectionTitle, { color: sectionStyle.titleColor }]}>{title}</Text>
@@ -580,11 +579,15 @@ const styles = StyleSheet.create({
   // ========== SECTIONS ==========
   // rounded-3xl + p-6 (24px) de la web — antes esto tenía menos padding (16/12) y sin radio en el
   // wrapper exterior (el radio vivía en sectionContent, que ahora ya no lleva fondo/borde propios,
-  // ver Section más arriba).
+  // ver Section más arriba). Sin sombra (`shadow`, con `elevation` para Android) a propósito: en
+  // Android, `elevation` sobre un fondo translúcido (bg-habit/10, bg-warning/10 — un color con
+  // alpha, no sólido) pinta un halo grueso del mismo tono pegado al borde en vez de una sombra
+  // suave, porque el sistema compone la sombra por debajo del fondo semitransparente y ambos se
+  // mezclan visualmente. QuickAccessCard (también con fondo translúcido) nunca llevó sombra por
+  // esto mismo — aquí se sigue el mismo criterio: solo borde, sin elevación.
   section: {
     borderRadius: radius.card,
     padding: 24,
-    overflow: "hidden",
   },
   sectionTitle: {
     fontFamily: fonts.sansBold,

@@ -34,10 +34,10 @@ abajo por qué planas y no anidadas como en el menú de escritorio de la web:
   el mismo cálculo de "ritmo" (verde/ámbar) que la web, crear objetivo, registrar progreso, borrar.
 - **Finanzas** (`src/screens/FinanzasScreen.tsx`): puerto de `dashboard/src/pages/FinanzasPage.tsx`
   — tarjetas de resumen del mes (Ingresos/Gastos/Balance/Ahorro/Inversión), gráfico de barras de
-  tendencia de los últimos 6 meses, top categorías de gasto, proyección anual, y movimientos
-  recientes (crear/borrar). Sin exportar a CSV (descargar/compartir ficheros añade permisos y UI
-  que no compensan aquí) ni el panel "Resumen del mes" duplicado de la web (ya cubierto por las
-  tarjetas en una pantalla de una sola columna).
+  tendencia de los últimos 6 meses, panel sólido "Resumen del mes", panel sólido "Top categorías
+  de gasto", proyección anual, y movimientos recientes (crear/borrar), con los mismos estilos de
+  tarjeta que la web (card-soft, paneles sólidos bg-primary/bg-secondary). Sin exportar a CSV
+  (descargar/compartir ficheros añade permisos y UI que no compensan aquí).
 - **Ahorro** (`src/screens/MetasAhorroScreen.tsx`): puerto de
   `dashboard/src/pages/MetasAhorroPage.tsx` + `dashboard/src/components/SavingsGoals.tsx` — mismo
   "grid de casillas" (cada casilla = una porción de `stepAmount`; tocarla aporta o retira dinero de
@@ -78,10 +78,15 @@ de tiempo libre; vistas mes/año de Agenda; selector de tablero / múltiples tab
 personalizados del Planificador; imagen y seguimiento de tiempo (`estimatedMinutes`/
 `actualMinutes`) de una tarea; vincular una tarea a un proyecto; reordenar tareas por arrastre
 dentro de una columna (se puede añadir después con `react-native-draggable-flatlist` sin tocar el
-backend); modo "Apilado" de Horario (solo "Flechas": un horario a la vez) y su calendario anual
-con leyenda (`AnnualCalendarLegend`, un componente sin relación con un horario concreto);
-exportación CSV de Finanzas; edición de un movimiento ya creado (la web tampoco lo expone, solo
-crear/borrar). Proyectos y Hobbies siguen sin pantalla propia.
+backend); exportación CSV de Finanzas; edición de un movimiento ya creado (la web tampoco lo
+expone, solo crear/borrar). Proyectos y Hobbies siguen sin pantalla propia.
+
+Horario ya tiene paridad completa con la web: los dos modos de vista ("Flechas" y "Apilado",
+persistido con `expo-secure-store` igual que el resto de preferencias del móvil — ver
+`HorarioScreen.tsx`) y el calendario anual con leyenda (`components/AnnualCalendarLegend.tsx`).
+Simplificaciones deliberadas frente a la web: pintar un día es un toque (toggle), no arrastrar
+—no hay `mousemove` continuo en táctil—, y los borrados (horario/franja/categoría) son de un solo
+toque, sin el "¿Confirmar?" de doble clic que depende de un hover que tampoco existe aquí.
 
 ## Cómo funciona el offline
 
