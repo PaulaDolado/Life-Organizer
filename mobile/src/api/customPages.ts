@@ -6,9 +6,9 @@
 import { api } from "./client";
 
 // Mismas 8 plantillas que `CUSTOM_PAGE_TEMPLATES` en
-// dashboard/src/utils/customPageTemplates.ts — el móvil solo tiene editor propio para "galeria"
-// (lo que se pidió portar); el resto se puede abrir (título/subtítulo editables) pero su
-// contenido se edita desde la web, ver PaginaDetailScreen.tsx.
+// dashboard/src/utils/customPageTemplates.ts — el móvil tiene editor propio para "galeria",
+// "nota" y "kanban" (ver PaginaDetailScreen.tsx); el resto se puede abrir (título/subtítulo
+// editables) pero su contenido se edita desde la web.
 export const CUSTOM_PAGE_TEMPLATES = ["nota", "kanban", "galeria", "finanzas", "proyectos", "objetivos", "agenda", "hoy"] as const;
 export type CustomPageTemplate = (typeof CUSTOM_PAGE_TEMPLATES)[number];
 
@@ -44,9 +44,51 @@ export interface GalleryContent {
   items: GalleryEntry[];
 }
 
-// El resto de plantillas también son JSON libre (`{ html }`, `{ columns }`, `{ goals }`...) pero
-// el móvil no tiene editor para ellas todavía — se tratan como opacas (`unknown`).
-export type CustomPageContent = GalleryContent | Record<string, unknown>;
+// Mismo tipo que CustomPageContentMap["nota"] en dashboard/src/types.ts — el móvil edita este
+// `html` como texto plano (ver utils/htmlText.ts), no con un editor enriquecido.
+export interface NotaContent {
+  html: string;
+}
+
+// Propiedades personalizadas de un tablero kanban (CustomFieldDef/CustomFieldValues en
+// dashboard/src/types.ts) — el móvil no tiene UI para crearlas/editarlas todavía (ver
+// PaginaDetailScreen.tsx), pero se preservan tal cual al guardar para no perder las que ya se
+// hubieran creado desde la web: el PUT sustituye el `content` entero (ver
+// src/services/customPagesService.ts), así que cualquier campo que el móvil no toque hay que
+// mantenerlo en el objeto que se manda de vuelta.
+export type CustomFieldType = "text" | "number" | "date" | "select";
+export interface CustomFieldDef {
+  id: string;
+  name: string;
+  type: CustomFieldType;
+  options?: string[];
+}
+export type CustomFieldValue = string | number | null;
+export type CustomFieldValues = Record<string, CustomFieldValue>;
+
+export interface KanbanCard {
+  id: string;
+  text: string;
+  image?: string | null;
+  description?: string;
+  notes?: string | null;
+  fields?: CustomFieldValues;
+}
+
+export interface KanbanColumn {
+  id: string;
+  title: string;
+  cards: KanbanCard[];
+}
+
+export interface KanbanContent {
+  columns: KanbanColumn[];
+  fieldDefs?: CustomFieldDef[];
+}
+
+// El resto de plantillas también son JSON libre (`{ goals }`, `{ entries }`...) pero el móvil no
+// tiene editor para ellas todavía — se tratan como opacas (`unknown`).
+export type CustomPageContent = GalleryContent | NotaContent | KanbanContent | Record<string, unknown>;
 
 export interface CustomPage extends CustomPageSummary {
   content: CustomPageContent;

@@ -27,9 +27,9 @@ export interface Project {
 // Página de la libreta: `content` es HTML enriquecido en el servidor (así lo escribe el editor de
 // la web, con negrita/listas/imágenes) — el móvil todavía no tiene un editor de texto enriquecido
 // (no hay ninguna librería de rich text en package.json), así que edita/mira el contenido como
-// texto plano. Ver htmlToPlainText/plainTextToHtml más abajo para la conversión en los dos
-// sentidos: abrir una página escrita desde la web no debe enseñar las etiquetas HTML tal cual, y
-// guardar desde el móvil no debe destrozar el HTML existente más de lo imprescindible.
+// texto plano. Ver utils/htmlText.ts (htmlToPlainText/plainTextToHtml) para la conversión en los
+// dos sentidos: abrir una página escrita desde la web no debe enseñar las etiquetas HTML tal cual,
+// y guardar desde el móvil no debe destrozar el HTML existente más de lo imprescindible.
 export interface ProjectPage {
   id: number;
   projectId: number;
@@ -93,36 +93,3 @@ export const updateProjectPage = (projectId: number, pageId: number, patch: { ti
 
 export const deleteProjectPage = (projectId: number, pageId: number) =>
   api.delete<{ message: string }>(`/projects/${projectId}/pages/${pageId}`);
-
-// Convierte el HTML de una página (escrita desde el editor enriquecido de la web) en texto plano
-// legible: cambia las etiquetas de bloque más comunes por saltos de línea ANTES de tirar el resto
-// de etiquetas, para no aplastar varios párrafos/líneas de lista en una sola frase corrida. Pierde
-// negrita/cursiva/imágenes (no hay editor de texto enriquecido en el móvil) — es una lectura fiel
-// del texto, no una vista previa fiel del formato.
-export function htmlToPlainText(html: string): string {
-  if (!html) return "";
-  return html
-    .replace(/<(p|div|li|br|h[1-6])[^>]*>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]*>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-// Camino inverso: cada línea se envuelve en <p> (escapando lo que en HTML son caracteres
-// especiales) para que lo guardado desde el móvil se siga viendo razonablemente bien si luego se
-// abre en la web — líneas en blanco se conservan como párrafos vacíos, igual que un editor de
-// texto enriquecido normal.
-export function plainTextToHtml(text: string): string {
-  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return text
-    .split("\n")
-    .map((line) => `<p>${escape(line) || "<br>"}</p>`)
-    .join("");
-}

@@ -229,3 +229,45 @@ describe("excepciones a ocurrencias recurrentes", () => {
     expect(next?.isException).toBe(true);
   });
 });
+
+describe("expandRecurringEvent con weekday_range", () => {
+  it("genera una ocurrencia de lunes a viernes, saltándose el fin de semana", () => {
+    // 2026-08-03 es lunes (ver makeEvent) — rango 1=lunes..5=viernes.
+    const event = makeEvent({ recurringPattern: "weekday_range", recurringWeekdayStart: 1, recurringWeekdayEnd: 5 });
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-16T23:59:59.000Z"));
+
+    // Lun 3 a vie 7, y lun 10 a vie 14 — sáb/dom (8,9,15,16) quedan fuera.
+    expect(occurrences.map((o) => o.startTime.toISOString().slice(0, 10))).toEqual([
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
+      "2026-08-06",
+      "2026-08-07",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+    ]);
+  });
+
+  it("un rango que da la vuelta a la semana (start > end) también funciona, p.ej. viernes a lunes", () => {
+    const event = makeEvent({ recurringPattern: "weekday_range", recurringWeekdayStart: 5, recurringWeekdayEnd: 1 });
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-10T23:59:59.000Z"));
+
+    // Vie 7, sáb 8, dom 9, lun 10 caen dentro (mar-jue quedan fuera); lunes 3 también entra (≤1).
+    expect(occurrences.map((o) => o.startTime.toISOString().slice(0, 10))).toEqual([
+      "2026-08-03",
+      "2026-08-07",
+      "2026-08-08",
+      "2026-08-09",
+      "2026-08-10",
+    ]);
+  });
+
+  it("sin recurringWeekdayStart/End explícitos, cae de vuelta a lunes-viernes por defecto", () => {
+    const event = makeEvent({ recurringPattern: "weekday_range" });
+    const occurrences = expandRecurringEvent(event, new Date("2026-08-03T00:00:00.000Z"), new Date("2026-08-09T23:59:59.000Z"));
+    expect(occurrences).toHaveLength(5); // lun-vie, sin sáb/dom
+  });
+});

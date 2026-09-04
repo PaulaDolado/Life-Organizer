@@ -1,7 +1,9 @@
 import Joi from "joi";
 
 const EVENT_TYPES = ["work", "study", "gym", "meeting", "free", "evento", "cita", "cumpleanos", "otro"];
-const RECURRING_PATTERNS = ["daily", "weekly", "biweekly", "monthly"];
+const RECURRING_PATTERNS = ["daily", "weekly", "biweekly", "monthly", "weekday_range"];
+// 1=lunes .. 7=domingo (ISO) — ver el comentario de estos mismos campos en prisma/schema.prisma.
+const weekdaySchema = Joi.number().integer().min(1).max(7);
 const EXCEPTION_ACTIONS = ["moved", "cancelled"];
 // Máx. 1 semana de antelación (10080 min) y como mucho 5 avisos por evento — de sobra para
 // "15 min antes" + "1 día antes" y alguna combinación más, sin permitir listas absurdas.
@@ -39,6 +41,10 @@ export const createEventSchema = Joi.object({
   recurringPattern: Joi.string()
     .valid(...RECURRING_PATTERNS)
     .when("isRecurring", { is: true, then: Joi.required(), otherwise: Joi.optional().allow(null) }),
+  // Solo obligatorios cuando el patrón es "weekday_range" (rango de días de la semana, p.ej.
+  // lunes a viernes) — el resto de patrones no los usan.
+  recurringWeekdayStart: weekdaySchema.when("recurringPattern", { is: "weekday_range", then: Joi.required(), otherwise: Joi.optional().allow(null) }),
+  recurringWeekdayEnd: weekdaySchema.when("recurringPattern", { is: "weekday_range", then: Joi.required(), otherwise: Joi.optional().allow(null) }),
   reminderMinutesBefore: reminderMinutesBeforeSchema,
   guests: guestsSchema,
 }).options({ stripUnknown: true });
@@ -52,6 +58,11 @@ export const updateEventSchema = Joi.object({
   location: Joi.string().max(200).allow(null, ""),
   isRecurring: Joi.boolean(),
   recurringPattern: Joi.string().valid(...RECURRING_PATTERNS).allow(null),
+  // Igual que en createEventSchema: obligatorios solo si esta misma petición pone el patrón a
+  // "weekday_range" — si el update no toca `recurringPattern`, el evento se queda con los
+  // valores que ya tuviera guardados (o null, si nunca fue "weekday_range").
+  recurringWeekdayStart: weekdaySchema.when("recurringPattern", { is: "weekday_range", then: Joi.required(), otherwise: Joi.optional().allow(null) }),
+  recurringWeekdayEnd: weekdaySchema.when("recurringPattern", { is: "weekday_range", then: Joi.required(), otherwise: Joi.optional().allow(null) }),
   reminderMinutesBefore: reminderMinutesBeforeSchema,
   guests: guestsSchema,
 })

@@ -144,6 +144,10 @@ interface CreateEventInput {
   location?: string | null;
   isRecurring?: boolean;
   recurringPattern?: string | null;
+  // Solo con recurringPattern = "weekday_range" — ver el comentario de estos campos en
+  // prisma/schema.prisma.
+  recurringWeekdayStart?: number | null;
+  recurringWeekdayEnd?: number | null;
   reminderMinutesBefore?: number[];
   guests?: string[];
 }
@@ -160,6 +164,8 @@ export async function createEvent(userId: number, input: CreateEventInput) {
       location: input.location ?? null,
       isRecurring: input.isRecurring ?? false,
       recurringPattern: input.recurringPattern ?? null,
+      recurringWeekdayStart: input.recurringWeekdayStart ?? null,
+      recurringWeekdayEnd: input.recurringWeekdayEnd ?? null,
       reminderMinutesBefore: input.reminderMinutesBefore ?? [30],
       guests: input.guests ?? [],
     },
@@ -191,6 +197,8 @@ export async function updateEvent(userId: number, eventId: number, input: Partia
       ...(input.location !== undefined ? { location: input.location } : {}),
       ...(input.isRecurring !== undefined ? { isRecurring: input.isRecurring } : {}),
       ...(input.recurringPattern !== undefined ? { recurringPattern: input.recurringPattern } : {}),
+      ...(input.recurringWeekdayStart !== undefined ? { recurringWeekdayStart: input.recurringWeekdayStart } : {}),
+      ...(input.recurringWeekdayEnd !== undefined ? { recurringWeekdayEnd: input.recurringWeekdayEnd } : {}),
       ...(input.reminderMinutesBefore !== undefined ? { reminderMinutesBefore: input.reminderMinutesBefore } : {}),
       ...(input.guests !== undefined ? { guests: input.guests } : {}),
     },
@@ -378,6 +386,8 @@ export async function exportIcs(userId: number): Promise<string> {
       endTime: e.endTime,
       isRecurring: e.isRecurring,
       recurringPattern: e.recurringPattern,
+      recurringWeekdayStart: e.recurringWeekdayStart,
+      recurringWeekdayEnd: e.recurringWeekdayEnd,
       exceptions: exceptionsByEventId.get(e.id) ?? [],
     }))
   );

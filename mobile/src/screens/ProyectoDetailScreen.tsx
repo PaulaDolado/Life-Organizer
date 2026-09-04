@@ -11,9 +11,7 @@ import {
   deleteProjectPage,
   deleteProjectTask,
   getProject,
-  htmlToPlainText,
   listProjectPages,
-  plainTextToHtml,
   Project,
   ProjectPage,
   ProjectStatus,
@@ -23,6 +21,7 @@ import {
   updateProjectStatus,
   updateProjectTask,
 } from "../api/projects";
+import { htmlToPlainText, plainTextToHtml } from "../utils/htmlText";
 import { colors, fonts, radius, shadow } from "../theme";
 import { ProyectosStackParamList } from "./ProyectosScreen";
 
@@ -30,8 +29,9 @@ import { ProyectosStackParamList } from "./ProyectosScreen";
 // dashboard/src/pages/ProyectosPage.tsx. Dos simplificaciones deliberadas frente a la web:
 //   - El contenido de cada página se edita como texto plano, no con el editor enriquecido de la
 //     web (negrita/listas/imágenes) — no hay ninguna librería de rich text en package.json, y
-//     traer una solo para esto es demasiado para lo que se pidió. Ver htmlToPlainText/
-//     plainTextToHtml en api/projects.ts para la conversión en los dos sentidos.
+//     traer una solo para esto es demasiado para lo que se pidió. Ver utils/htmlText.ts
+//     (htmlToPlainText/plainTextToHtml) para la conversión en los dos sentidos — compartido con la
+//     plantilla "Nota en blanco" de página personalizada (PaginaDetailScreen.tsx).
 //   - Guardado explícito con un botón, no autoguardado a los 600ms de cada tecla — mismo criterio
 //     que el resto de editores del móvil (ver PaginaDetailScreen.tsx).
 // La exportación a PDF/Word de la web tampoco tiene equivalente aquí (usa el diálogo de impresión

@@ -50,6 +50,25 @@ const PATTERN_TO_RRULE: Record<string, string> = {
   monthly: "FREQ=MONTHLY",
 };
 
+// 1=lunes .. 7=domingo (ISO) → los 2 códigos de día que usa RFC 5545 (BYDAY), en ese mismo orden.
+const ISO_WEEKDAY_TO_ICAL = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"];
+
+/** "weekday_range" no tiene una entrada fija en PATTERN_TO_RRULE (a diferencia de daily/weekly/
+ * biweekly/monthly): el rango de días es un dato del propio evento, no del patrón. Mismo criterio
+ * de "da la vuelta a la semana si start > end" que utils/recurrence.ts:matchesWeekdayRange, para
+ * que el .ics exportado repita exactamente los mismos días que ve la propia app. */
+function weekdayRangeToRRule(start: number, end: number): string {
+  const days: string[] = [];
+  let day = start;
+  // Como mucho 7 vueltas — un rango de días de la semana nunca puede cubrir más de los 7 días.
+  for (let i = 0; i < 7; i++) {
+    days.push(ISO_WEEKDAY_TO_ICAL[day - 1]);
+    if (day === end) break;
+    day = day === 7 ? 1 : day + 1;
+  }
+  return `FREQ=WEEKLY;BYDAY=${days.join(",")}`;
+}
+
 const UID_DOMAIN = "life-organizer.local";
 
 export interface IcsExceptionLike {
@@ -68,6 +87,10 @@ export interface IcsEventInput {
   endTime: Date;
   isRecurring: boolean;
   recurringPattern?: string | null;
+  // Solo con recurringPattern = "weekday_range" — ver el comentario de estos campos en
+  // prisma/schema.prisma.
+  recurringWeekdayStart?: number | null;
+  recurringWeekdayEnd?: number | null;
   exceptions?: IcsExceptionLike[];
 }
 
@@ -94,7 +117,10 @@ export function buildIcs(events: IcsEventInput[]): string {
     if (event.location) lines.push(foldLine(`LOCATION:${escapeIcsText(event.location)}`));
 
     if (event.isRecurring && event.recurringPattern) {
-      const rrule = PATTERN_TO_RRULE[event.recurringPattern];
+      const rrule =
+        event.recurringPattern === "weekday_range"
+          ? weekdayRangeToRRule(event.recurringWeekdayStart ?? 1, event.recurringWeekdayEnd ?? 5)
+          : PATTERN_TO_RRULE[event.recurringPattern];
       if (rrule) lines.push(`RRULE:${rrule}`);
 
       const cancelled = (event.exceptions ?? []).filter((ex) => ex.status === "cancelled");

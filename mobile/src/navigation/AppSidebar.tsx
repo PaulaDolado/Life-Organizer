@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, View, Text, Pressable, Image, ScrollView, StyleSheet, useWindowDimensions } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Easing, View, Text, Pressable, Image, ScrollView, Modal, StyleSheet, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useAuth } from "../auth/AuthContext";
 import { useSidebar } from "./SidebarContext";
+import { createCustomPage, CustomPageSummary, CustomPageTemplate, listCustomPages } from "../api/customPages";
+import { NewPageForm } from "../components/NewPageForm";
 import { colors, fonts, radius } from "../theme";
 
 // Sidebar lateral para móvil — reemplaza la barra de pestañas inferior (bottom-tabs) por un menú
@@ -59,6 +61,13 @@ interface NavItem {
 // Horario, Finanzas agrupa Ahorro) — el móvil hasta ahora lo aplanaba (FLAT_NAV) porque una fila
 // horizontal de pestañas no tenía sitio para anidar; una columna vertical sí, así que aquí se
 // replica la jerarquía real de escritorio en vez de la versión aplanada.
+//
+// "Páginas" NO está aquí a propósito: ya no es un apartado que navegue a una lista, es el botón
+// "+ Nueva página" al final del menú (ver más abajo, después de este NAV.map) — mismo criterio
+// que el botón "+ Nueva página" de dashboard/src/components/AppShell.tsx, que tampoco vive dentro
+// del <nav> de apartados sino aparte, junto al listado de "Tus páginas". La pantalla "Lista"
+// (PaginasListScreen.tsx) sigue existiendo y sigue siendo alcanzable volviendo atrás desde el
+// detalle de una página — solo se quitó como entrada directa del menú.
 const NAV: NavItem[] = [
   { route: "Hoy", label: "Hoy", icon: "☀" },
   {
@@ -77,9 +86,13 @@ const NAV: NavItem[] = [
     icon: "💰",
     children: [{ route: "Ahorro", label: "Metas de ahorro", icon: "🐷" }],
   },
-  { route: "Páginas", label: "Páginas", icon: "🖼" },
   { route: "Proyectos", label: "Proyectos", icon: "📁" },
 ];
+
+// Clave de medición para el botón "+ Nueva página" (ver measureContainer) — no es una `route` de
+// verdad, así que no puede compartir claves con NAV/App.tsx.
+const NEW_PAGE_LABEL = "+ Nueva página";
+const NEW_PAGE_KEY = "__new_page__";
 
 const DEFAULT_WIDTH = 220;
 // Añadido al ancho de texto medido: paddingHorizontal del botón (2*12) + paddingHorizontal de la
@@ -94,6 +107,8 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
   const { collapsed, setCollapsed } = useSidebar();
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [labelWidths, setLabelWidths] = useState<Record<string, number>>({});
+  const [showCreatePage, setShowCreatePage] = useState(false);
+  const [customPages, setCustomPages] = useState<CustomPageSummary[]>([]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const activeRoute = state.routes[state.index].name;
@@ -124,6 +139,28 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
     setLabelWidths((prev) => (prev[key] === width ? prev : { ...prev, [key]: width }));
   };
 
+  // Igual que "Tus páginas" en dashboard/src/components/AppShell.tsx — un fallo puntual no debe
+  // romper el resto del sidebar, ya se reintentará la próxima vez que se abra el menú.
+  const reloadCustomPages = useCallback(async () => {
+    try {
+      setCustomPages(await listCustomPages());
+    } catch {
+      // silencioso a propósito, ver el comentario de arriba
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadCustomPages();
+  }, [reloadCustomPages]);
+
+  // AppSidebar no es una pantalla con su propio ciclo de foco (useFocusEffect) — es el `tabBar`,
+  // siempre montado — así que recarga cada vez que se ABRE el menú, para reflejar páginas creadas/
+  // renombradas/borradas desde la web o desde PaginasListScreen (alcanzable volviendo atrás desde
+  // el detalle) sin esperar a la próxima vez que se monte AppSidebar entero (nunca, en la práctica).
+  useEffect(() => {
+    if (!collapsed) reloadCustomPages();
+  }, [collapsed, reloadCustomPages]);
+
   // Navegar SIEMPRE cierra el menú (a diferencia de la web, donde el <aside> se queda fijo) —
   // en una pantalla de móvil, dejarlo desplegado tapando el contenido tras elegir a dónde ir
   // sería un paso extra de más; el usuario ya puede volver a abrirlo con el clip cuando lo
@@ -141,6 +178,23 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
       else next.add(route);
       return next;
     });
+  };
+
+  // Igual que goTo(), pero para "Detalle" de la pila anidada de Páginas (ver App.tsx:
+  // RootTabParamList.Páginas ya acepta NavigatorScreenParams para esto) — mismo criterio que
+  // handleCreate en PaginasListScreen.tsx: crear salta directo al detalle de la página nueva, no
+  // se queda en ningún listado intermedio.
+  const handleCreatePage = async (title: string, template: CustomPageTemplate) => {
+    const created = await createCustomPage(title, template);
+    setShowCreatePage(false);
+    await reloadCustomPages();
+    navigation.navigate("Páginas", { screen: "Detalle", params: { id: created.id, title: created.title } });
+    setCollapsed(true);
+  };
+
+  const openPage = (page: CustomPageSummary) => {
+    navigation.navigate("Páginas", { screen: "Detalle", params: { id: page.id, title: page.title } });
+    setCollapsed(true);
   };
 
   const topOffset = insets.top + 16;
@@ -205,6 +259,9 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
               ))}
             </View>
           ))}
+          <Text style={styles.measureLabel} onLayout={(e) => onMeasureLabel(NEW_PAGE_KEY, e.nativeEvent.layout.width)}>
+            {NEW_PAGE_LABEL}
+          </Text>
         </View>
 
         <ScrollView style={{ paddingTop: topOffset }} contentContainerStyle={styles.scrollContent}>
@@ -257,6 +314,34 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
                 </View>
               );
             })}
+
+            {/* "Tus páginas" — mismo criterio que dashboard/src/components/AppShell.tsx: cada
+                página creada aparece aquí, tocarla navega directo a su detalle. Sin renombrar/
+                borrar inline (eso ya se puede hacer entrando en el detalle de la página, ver
+                PaginaDetailScreen.tsx) — el pedido era solo que se vieran en el menú. */}
+            {customPages.length > 0 && (
+              <>
+                <Text style={styles.navSectionLabel}>Tus páginas</Text>
+                {customPages.map((page) => (
+                  <Pressable key={page.id} onPress={() => openPage(page)} style={styles.navButton}>
+                    <Text numberOfLines={1} style={styles.navLabel}>
+                      {page.title}
+                    </Text>
+                  </Pressable>
+                ))}
+              </>
+            )}
+
+            {/* Al final del todo, no un apartado más: translúcido con borde punteado (mismo
+                criterio que el botón "+ Nueva página" de dashboard/src/components/AppShell.tsx)
+                para distinguirlo del resto — es una acción de "crear algo nuevo", no una pestaña
+                a la que navegar. Abre el diálogo de crear página directamente, en vez de navegar
+                a un listado primero (ver handleCreatePage). */}
+            <Pressable onPress={() => setShowCreatePage(true)} style={styles.newPageButton}>
+              <Text numberOfLines={1} style={styles.newPageLabel}>
+                {NEW_PAGE_LABEL}
+              </Text>
+            </Pressable>
           </View>
         </ScrollView>
 
@@ -286,6 +371,17 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
           <Image source={clipClosedSource} resizeMode="contain" style={{ width: CLIP_CLOSED_W, height: CLIP_CLOSED_H }} />
         </Pressable>
       </Animated.View>
+
+      {/* Mismo diálogo (plantilla + título) que dashboard/src/components/AppShell.tsx abre al
+          pulsar "+ Nueva página" — un <Modal> nativo, no otra pantalla del stack, así que no hace
+          falta pasar por "Lista" para crear. */}
+      <Modal visible={showCreatePage} animationType="slide" transparent onRequestClose={() => setShowCreatePage(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <NewPageForm onCancel={() => setShowCreatePage(false)} onSubmit={handleCreatePage} />
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -396,6 +492,43 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansMedium,
     fontSize: 13,
     color: colors.mutedForeground,
+  },
+  // px-3 pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground del "Tus páginas"
+  // de la web.
+  navSectionLabel: {
+    fontFamily: fonts.sansBold,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    color: colors.mutedForeground,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  // border-dashed border-primary/30 bg-primary/5 text-primary del botón "+ Nueva página" de la
+  // web — lo distingue del resto de filas del menú, que son texto liso sin fondo ni borde.
+  newPageButton: {
+    marginTop: 4,
+    borderRadius: radius.input,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(95, 113, 97, 0.3)",
+    backgroundColor: "rgba(95, 113, 97, 0.05)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  newPageLabel: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 15,
+    color: colors.primary,
+  },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(45,41,38,0.4)", justifyContent: "flex-end" },
+  modalSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    padding: 20,
+    maxHeight: "88%",
   },
   footer: {
     flexDirection: "row",

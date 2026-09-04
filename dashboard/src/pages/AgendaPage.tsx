@@ -40,6 +40,17 @@ const RECURRENCES: { value: RecurringPattern; label: string }[] = [
   { value: "weekly", label: "Cada semana" },
   { value: "biweekly", label: "Cada 2 semanas" },
   { value: "monthly", label: "Cada mes" },
+  { value: "weekday_range", label: "Rango de días de la semana" },
+];
+// 1=lunes .. 7=domingo (ISO) — mismo orden que recurringWeekdayStart/End en el backend.
+const WEEKDAYS: { value: number; label: string }[] = [
+  { value: 1, label: "Lunes" },
+  { value: 2, label: "Martes" },
+  { value: 3, label: "Miércoles" },
+  { value: 4, label: "Jueves" },
+  { value: 5, label: "Viernes" },
+  { value: 6, label: "Sábado" },
+  { value: 7, label: "Domingo" },
 ];
 // Antelaciones de aviso ofrecidas en el formulario — el backend admite cualquier valor entre
 // 1 min y 1 semana, pero un puñado de presets cubre el caso de uso real sin abrumar la UI.
@@ -1128,8 +1139,49 @@ interface EventInputFields {
   endTime: string;
   isRecurring: boolean;
   recurringPattern?: RecurringPattern;
+  // Solo se envían cuando recurringPattern === "weekday_range".
+  recurringWeekdayStart?: number;
+  recurringWeekdayEnd?: number;
   reminderMinutesBefore: number[];
   guests: string[];
+}
+
+// Los dos <select> "de X a Y" del formulario, para no duplicarlos tres veces (NewEventForm y
+// EventDialog) — el resto de campos de recurrencia (checkbox + select de patrón) sí siguen
+// duplicados, ya lo estaban antes de este rango y sus layouts de grid difieren bastante entre
+// los dos formularios como para compensar extraerlos también.
+function WeekdayRangeFields({
+  start,
+  end,
+  onStartChange,
+  onEndChange,
+  className,
+}: {
+  start: number;
+  end: number;
+  onStartChange: (value: number) => void;
+  onEndChange: (value: number) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-2 ${className ?? ""}`}>
+      <select value={start} onChange={(e) => onStartChange(Number(e.target.value))} className="field-input flex-1">
+        {WEEKDAYS.map((d) => (
+          <option key={d.value} value={d.value}>
+            {d.label}
+          </option>
+        ))}
+      </select>
+      <span className="shrink-0 text-xs text-muted-foreground">a</span>
+      <select value={end} onChange={(e) => onEndChange(Number(e.target.value))} className="field-input flex-1">
+        {WEEKDAYS.map((d) => (
+          <option key={d.value} value={d.value}>
+            {d.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 function ReminderCheckboxes({ value, onChange }: { value: number[]; onChange: (minutes: number[]) => void }) {
@@ -1229,6 +1281,9 @@ function EventDialog({
   const [type, setType] = useState<EventType>(event.type as EventType);
   const [isRecurring, setIsRecurring] = useState(event.isRecurring ?? false);
   const [recurringPattern, setRecurringPattern] = useState<RecurringPattern>(event.recurringPattern ?? "weekly");
+  // Por defecto lunes a viernes (1-5) — el caso de uso que da nombre a la funcionalidad.
+  const [recurringWeekdayStart, setRecurringWeekdayStart] = useState(event.recurringWeekdayStart ?? 1);
+  const [recurringWeekdayEnd, setRecurringWeekdayEnd] = useState(event.recurringWeekdayEnd ?? 5);
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState<number[]>(event.reminderMinutesBefore ?? [30]);
   const [guests, setGuests] = useState<string[]>(event.guests ?? []);
   const [submitting, setSubmitting] = useState(false);
@@ -1259,6 +1314,7 @@ function EventDialog({
               ...buildTimes(),
               isRecurring,
               ...(isRecurring ? { recurringPattern } : {}),
+              ...(isRecurring && recurringPattern === "weekday_range" ? { recurringWeekdayStart, recurringWeekdayEnd } : {}),
               reminderMinutesBefore,
               guests,
             });
@@ -1313,6 +1369,14 @@ function EventDialog({
                 </option>
               ))}
             </select>
+          )}
+          {isRecurring && recurringPattern === "weekday_range" && (
+            <WeekdayRangeFields
+              start={recurringWeekdayStart}
+              end={recurringWeekdayEnd}
+              onStartChange={setRecurringWeekdayStart}
+              onEndChange={setRecurringWeekdayEnd}
+            />
           )}
 
           <ReminderCheckboxes value={reminderMinutesBefore} onChange={setReminderMinutesBefore} />
@@ -1415,6 +1479,8 @@ function NewEventForm({ date, onSubmit }: { date: string; onSubmit: (input: Even
   const [type, setType] = useState<EventType>("work");
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringPattern, setRecurringPattern] = useState<RecurringPattern>("weekly");
+  const [recurringWeekdayStart, setRecurringWeekdayStart] = useState(1);
+  const [recurringWeekdayEnd, setRecurringWeekdayEnd] = useState(5);
   const [reminderMinutesBefore, setReminderMinutesBefore] = useState<number[]>([30]);
   const [guests, setGuests] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -1433,6 +1499,7 @@ function NewEventForm({ date, onSubmit }: { date: string; onSubmit: (input: Even
             endTime: new Date(`${eventDate}T${endTime}:00`).toISOString(),
             isRecurring,
             ...(isRecurring ? { recurringPattern } : {}),
+            ...(isRecurring && recurringPattern === "weekday_range" ? { recurringWeekdayStart, recurringWeekdayEnd } : {}),
             reminderMinutesBefore,
             guests,
           });
@@ -1471,6 +1538,15 @@ function NewEventForm({ date, onSubmit }: { date: string; onSubmit: (input: Even
             </option>
           ))}
         </select>
+      )}
+      {isRecurring && recurringPattern === "weekday_range" && (
+        <WeekdayRangeFields
+          start={recurringWeekdayStart}
+          end={recurringWeekdayEnd}
+          onStartChange={setRecurringWeekdayStart}
+          onEndChange={setRecurringWeekdayEnd}
+          className="md:col-span-2"
+        />
       )}
 
       <div className="md:col-span-5">

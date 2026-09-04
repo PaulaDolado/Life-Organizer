@@ -74,7 +74,14 @@ model Event {
   endTime          DateTime
   location         String?
   isRecurring      Boolean  @default(false)
-  recurringPattern String? // "daily", "weekly", "biweekly", "monthly"
+  recurringPattern String? // "daily", "weekly", "biweekly", "monthly", "weekday_range"
+  // Solo con recurringPattern = "weekday_range": rango de días de la semana que repite (p.ej.
+  // lunes a viernes), en vez de un único día fijo — convención ISO 1=lunes..7=domingo, para que
+  // "lunes a viernes" sea literalmente 1 a 5. Si `recurringWeekdayStart > recurringWeekdayEnd` el
+  // rango da la vuelta a la semana (p.ej. 5 a 1 = viernes, sábado, domingo, lunes) — ver
+  // utils/recurrence.ts:matchesWeekdayRange.
+  recurringWeekdayStart Int?
+  recurringWeekdayEnd   Int?
   // Antelación(es) de aviso, en minutos (p.ej. [15, 1440] = 15 min y 1 día antes). Sustituye el
   // recordatorio fijo de ~30 min que antes generaba `notificationService` para todos los eventos
   // por igual — cada evento configura los suyos, y puede tener varios o ninguno ([]).

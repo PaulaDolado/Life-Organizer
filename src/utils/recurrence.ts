@@ -12,6 +12,10 @@ export interface RecurringEventLike {
   recurringPattern: string | null;
   startTime: Date;
   endTime: Date;
+  // Solo con recurringPattern = "weekday_range" — ver el comentario de estos campos en
+  // prisma/schema.prisma.
+  recurringWeekdayStart?: number | null;
+  recurringWeekdayEnd?: number | null;
 }
 
 /** Excepción a una ocurrencia concreta — ver comentario de `EventException` en el schema. */
@@ -49,10 +53,15 @@ const MAX_OCCURRENCES = 3660; // ~10 años en cadencia diaria
  * encadenara (n → n+1 a partir del resultado ya calculado), un evento anclado el día 31
  * quedaría "clampado" a 28 en febrero y ya nunca volvería a 31 en marzo — un date-fns
  * `addMonths` calculado siempre desde el mes original evita ese arrastre.
+ *
+ * "weekday_range" avanza día a día, igual que "daily": no hay una cadencia semanal/mensual que
+ * calcular aquí, cada día es un candidato — qué días concretos producen una ocurrencia visible
+ * lo decide `matchesWeekdayRange` en el bucle de `expandRecurringEvent`/`nextOccurrenceStartingIn`.
  */
 function occurrenceAt(originalStart: Date, pattern: string, n: number): Date {
   switch (pattern) {
     case "daily":
+    case "weekday_range":
       return addDays(originalStart, n);
     case "weekly":
       return addWeeks(originalStart, n);
@@ -63,6 +72,29 @@ function occurrenceAt(originalStart: Date, pattern: string, n: number): Date {
     default:
       return addWeeks(originalStart, n);
   }
+}
+
+/** 1=lunes .. 7=domingo (ISO) — `Date.getDay()` da 0=domingo..6=sábado, hay que rotarlo. */
+function isoWeekday(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+/** ¿Cae `date` dentro de [start, end] (ambos inclusive, convención ISO)? Si `start > end` el
+ * rango da la vuelta a la semana (p.ej. 5 a 1 = viernes, sábado, domingo, lunes) — así un rango
+ * "hacia atrás" sigue siendo válido en vez de no coincidir nunca. */
+function matchesWeekdayRange(date: Date, start: number, end: number): boolean {
+  const weekday = isoWeekday(date);
+  if (start <= end) return weekday >= start && weekday <= end;
+  return weekday >= start || weekday <= end;
+}
+
+/** Si el patrón es "weekday_range", ¿es `naturalStart` uno de los días que le tocan? Para el
+ * resto de patrones siempre es true — cada `naturalStart` que calcula `occurrenceAt` ya es, por
+ * definición, un día válido de esa cadencia. */
+function matchesRecurrencePattern<T extends RecurringEventLike>(event: T, naturalStart: Date): boolean {
+  if (event.recurringPattern !== "weekday_range") return true;
+  return matchesWeekdayRange(naturalStart, event.recurringWeekdayStart ?? 1, event.recurringWeekdayEnd ?? 5);
 }
 
 function findException(exceptions: EventExceptionLike[], naturalStart: Date): EventExceptionLike | undefined {
@@ -95,26 +127,29 @@ export function expandRecurringEvent<T extends RecurringEventLike>(
 
   while (cursorStart.getTime() <= rangeEnd.getTime() && n < MAX_OCCURRENCES) {
     const naturalStart = cursorStart;
-    const exception = findException(exceptions, naturalStart);
 
-    if (!exception || exception.status !== "cancelled") {
-      const moved = exception?.status === "moved";
-      const effectiveStart = moved && exception?.newStartTime ? exception.newStartTime : naturalStart;
-      const effectiveEnd =
-        moved && exception?.newEndTime ? exception.newEndTime : new Date(naturalStart.getTime() + durationMs);
+    if (matchesRecurrencePattern(event, naturalStart)) {
+      const exception = findException(exceptions, naturalStart);
 
-      if (effectiveStart.getTime() >= rangeStart.getTime() && effectiveEnd.getTime() <= rangeEnd.getTime()) {
-        occurrences.push({
-          event,
-          startTime: effectiveStart,
-          endTime: effectiveEnd,
-          isRecurringInstance: true,
-          seriesId: event.id,
-          // Siempre presente (no solo cuando hay excepción): el cliente lo necesita para poder
-          // crear la PRIMERA excepción de una ocurrencia que hasta ahora era "natural".
-          originalStartTime: naturalStart,
-          ...(exception ? { isException: true, exceptionStatus: "moved" as const } : {}),
-        });
+      if (!exception || exception.status !== "cancelled") {
+        const moved = exception?.status === "moved";
+        const effectiveStart = moved && exception?.newStartTime ? exception.newStartTime : naturalStart;
+        const effectiveEnd =
+          moved && exception?.newEndTime ? exception.newEndTime : new Date(naturalStart.getTime() + durationMs);
+
+        if (effectiveStart.getTime() >= rangeStart.getTime() && effectiveEnd.getTime() <= rangeEnd.getTime()) {
+          occurrences.push({
+            event,
+            startTime: effectiveStart,
+            endTime: effectiveEnd,
+            isRecurringInstance: true,
+            seriesId: event.id,
+            // Siempre presente (no solo cuando hay excepción): el cliente lo necesita para poder
+            // crear la PRIMERA excepción de una ocurrencia que hasta ahora era "natural".
+            originalStartTime: naturalStart,
+            ...(exception ? { isException: true, exceptionStatus: "moved" as const } : {}),
+          });
+        }
       }
     }
 
@@ -150,24 +185,27 @@ export function nextOccurrenceStartingIn<T extends RecurringEventLike>(
 
   while (cursorStart.getTime() <= rangeEnd.getTime() && n < MAX_OCCURRENCES) {
     const naturalStart = cursorStart;
-    const exception = findException(exceptions, naturalStart);
 
-    if (!exception || exception.status !== "cancelled") {
-      const moved = exception?.status === "moved";
-      const effectiveStart = moved && exception?.newStartTime ? exception.newStartTime : naturalStart;
+    if (matchesRecurrencePattern(event, naturalStart)) {
+      const exception = findException(exceptions, naturalStart);
 
-      if (effectiveStart.getTime() >= rangeStart.getTime() && effectiveStart.getTime() <= rangeEnd.getTime()) {
-        const effectiveEnd =
-          moved && exception?.newEndTime ? exception.newEndTime : new Date(naturalStart.getTime() + durationMs);
-        return {
-          event,
-          startTime: effectiveStart,
-          endTime: effectiveEnd,
-          isRecurringInstance: true,
-          seriesId: event.id,
-          originalStartTime: naturalStart,
-          ...(exception ? { isException: true, exceptionStatus: "moved" as const } : {}),
-        };
+      if (!exception || exception.status !== "cancelled") {
+        const moved = exception?.status === "moved";
+        const effectiveStart = moved && exception?.newStartTime ? exception.newStartTime : naturalStart;
+
+        if (effectiveStart.getTime() >= rangeStart.getTime() && effectiveStart.getTime() <= rangeEnd.getTime()) {
+          const effectiveEnd =
+            moved && exception?.newEndTime ? exception.newEndTime : new Date(naturalStart.getTime() + durationMs);
+          return {
+            event,
+            startTime: effectiveStart,
+            endTime: effectiveEnd,
+            isRecurringInstance: true,
+            seriesId: event.id,
+            originalStartTime: naturalStart,
+            ...(exception ? { isException: true, exceptionStatus: "moved" as const } : {}),
+          };
+        }
       }
     }
 

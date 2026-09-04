@@ -28,7 +28,7 @@ export interface AuthResponse {
 }
 
 export type EventType = "work" | "study" | "gym" | "meeting" | "free" | "evento" | "cita" | "cumpleanos" | "otro";
-export type RecurringPattern = "daily" | "weekly" | "biweekly" | "monthly";
+export type RecurringPattern = "daily" | "weekly" | "biweekly" | "monthly" | "weekday_range";
 
 export interface Event {
   id: number;
@@ -40,6 +40,10 @@ export interface Event {
   location: string | null;
   isRecurring?: boolean;
   recurringPattern?: RecurringPattern | null;
+  // Solo con recurringPattern = "weekday_range" (p.ej. de lunes a viernes) — convención ISO
+  // 1=lunes..7=domingo, ver el mismo comentario en prisma/schema.prisma.
+  recurringWeekdayStart?: number | null;
+  recurringWeekdayEnd?: number | null;
   isRecurringInstance?: boolean;
   reminderMinutesBefore: number[];
   guests: string[];

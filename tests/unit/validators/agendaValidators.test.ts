@@ -74,6 +74,40 @@ describe("agendaValidators", () => {
       });
       expect(error).toBeDefined();
     });
+
+    it("requiere recurringWeekdayStart/End cuando recurringPattern es weekday_range", () => {
+      const { error } = createEventSchema.validate({
+        ...base,
+        isRecurring: true,
+        recurringPattern: "weekday_range",
+        recurringWeekdayStart: 1,
+      });
+      expect(error).toBeDefined();
+    });
+
+    it("acepta weekday_range con recurringWeekdayStart/End válidos (lunes a viernes)", () => {
+      const { value, error } = createEventSchema.validate({
+        ...base,
+        isRecurring: true,
+        recurringPattern: "weekday_range",
+        recurringWeekdayStart: 1,
+        recurringWeekdayEnd: 5,
+      });
+      expect(error).toBeUndefined();
+      expect(value.recurringWeekdayStart).toBe(1);
+      expect(value.recurringWeekdayEnd).toBe(5);
+    });
+
+    it("rechaza recurringWeekdayStart fuera de 1-7", () => {
+      const { error } = createEventSchema.validate({
+        ...base,
+        isRecurring: true,
+        recurringPattern: "weekday_range",
+        recurringWeekdayStart: 0,
+        recurringWeekdayEnd: 5,
+      });
+      expect(error).toBeDefined();
+    });
   });
 
   describe("updateEventSchema", () => {

@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, NavigatorScreenParams } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import * as SplashScreen from "expo-splash-screen";
 import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from "@expo-google-fonts/outfit";
@@ -18,7 +18,7 @@ import { HorarioScreen } from "./src/screens/HorarioScreen";
 import { ObjetivosScreen } from "./src/screens/ObjetivosScreen";
 import { FinanzasScreen } from "./src/screens/FinanzasScreen";
 import { MetasAhorroScreen } from "./src/screens/MetasAhorroScreen";
-import { PaginasScreen } from "./src/screens/PaginasScreen";
+import { PaginasScreen, PaginasStackParamList } from "./src/screens/PaginasScreen";
 import { ProyectosScreen } from "./src/screens/ProyectosScreen";
 import { colors } from "./src/theme";
 
@@ -50,7 +50,10 @@ export type RootTabParamList = {
   Objetivos: undefined;
   Finanzas: undefined;
   Ahorro: undefined;
-  Páginas: undefined;
+  // NavigatorScreenParams (no `undefined` a secas, como el resto): AppSidebar navega directo a
+  // "Detalle" tras crear una página desde el diálogo "+ Nueva página" del menú, en vez de dejar
+  // que el usuario aterrice siempre en "Lista" — ver AppSidebar.tsx.
+  Páginas: NavigatorScreenParams<PaginasStackParamList> | undefined;
   Proyectos: undefined;
 };
 
