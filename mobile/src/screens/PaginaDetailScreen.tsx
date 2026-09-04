@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, ActivityIndicator, Image, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, ActivityIndicator, Image, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
+import DateTimePicker, { DateTimePickerChangeEvent } from "@react-native-community/datetimepicker";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ApiError } from "../api/client";
 import {
+  AgendaContent,
+  AgendaNote,
+  ChecklistContent,
+  ChecklistItem,
   CustomPage,
   deleteCustomPage,
+  FinanceContent,
+  FinanceEntry,
   GalleryContent,
   GalleryEntry,
   getCustomPage,
+  GoalsContent,
   KanbanCard,
   KanbanColumn,
   KanbanContent,
   NotaContent,
+  SimpleGoal,
   TEMPLATE_LABELS,
   updateCustomPage,
 } from "../api/customPages";
@@ -23,16 +32,21 @@ import { colors, fonts, radius, shadow } from "../theme";
 import { PaginasStackParamList } from "./PaginasScreen";
 
 // Detalle de una página personalizada — puerto de dashboard/src/pages/CustomPagePage.tsx. Título/
-// subtítulo se editan igual para cualquier plantilla (PUT /custom-pages/:id); el contenido tiene
-// editor propio para "galeria", "nota" y "kanban" — el resto sigue solo desde la web (ver
-// mobile/README.md). Simplificación deliberada frente a la web: guardado explícito con un botón
-// (o al perder el foco de un campo) en vez de autoguardado a los 600ms de cada pulsación, mismo
-// criterio que el resto de editores del móvil (ver ProyectoDetailScreen.tsx). "Nota" se edita como
-// texto plano, no con el editor enriquecido de la web (ver utils/htmlText.ts): no hay ninguna
-// librería de rich text en package.json. "Kanban" no tiene ni imagen por tarjeta ni gestión de
-// propiedades personalizadas (`fieldDefs`/`fields`) — se preservan tal cual si ya existían (creadas
-// desde la web) pero no se pueden crear/editar desde aquí; mover una tarjeta es tocarla y elegir
-// columna en el diálogo, no arrastrar (no hay gesture-handler/reanimated instalado).
+// subtítulo se editan igual para cualquier plantilla (PUT /custom-pages/:id); las 8 plantillas ya
+// tienen editor propio ("hoy" reutiliza el mismo componente que "proyectos", igual que en la
+// propia web — mismo tipo ChecklistContent). Simplificación deliberada
+// frente a la web: guardado explícito con un botón (o al perder el foco de un campo) en vez de
+// autoguardado a los 600ms de cada pulsación, mismo criterio que el resto de editores del móvil
+// (ver ProyectoDetailScreen.tsx) — salvo las acciones discretas (añadir/marcar/mover/borrar de
+// kanban, galería, finanzas, checklist, objetivos), que guardan de inmediato como ya hacía kanban/
+// galería, no al perder el foco de un campo de texto libre. "Nota" se edita como texto plano, no
+// con el editor enriquecido de la web (ver utils/htmlText.ts): no hay ninguna librería de rich
+// text en package.json. "Kanban" no tiene ni imagen por tarjeta ni gestión de propiedades
+// personalizadas (`fieldDefs`/`fields`) — se preservan tal cual si ya existían (creadas desde la
+// web) pero no se pueden crear/editar desde aquí; mover una tarjeta es tocarla y elegir columna en
+// el diálogo, no arrastrar (no hay gesture-handler/reanimated instalado). "Finanzas"/"Objetivos"
+// (plantilla) son independientes de las secciones Finanzas/Objetivos de la app: solo tocan el
+// `content` JSON de esta página, no Transaction/Goal reales.
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // igual límite que CustomPagePage.tsx (MAX_IMAGE_BYTES)
 
@@ -116,6 +130,32 @@ export function PaginaDetailScreen({ route, navigation }: Props) {
   const saveKanbanContent = async (content: KanbanContent) => {
     if (!page) return;
     const updated = await updateCustomPage(id, { content });
+    setPage(updated);
+  };
+
+  // Mismo criterio que saveKanbanContent/saveGalleryItems: guardado inmediato en cada acción
+  // (añadir/marcar/borrar movimiento, tarea u objetivo), no un botón "Guardar" aparte.
+  const saveFinanceEntries = async (entries: FinanceEntry[]) => {
+    if (!page) return;
+    const updated = await updateCustomPage(id, { content: { entries } });
+    setPage(updated);
+  };
+
+  const saveChecklistItems = async (items: ChecklistItem[]) => {
+    if (!page) return;
+    const updated = await updateCustomPage(id, { content: { items } });
+    setPage(updated);
+  };
+
+  const saveGoals = async (goals: SimpleGoal[]) => {
+    if (!page) return;
+    const updated = await updateCustomPage(id, { content: { goals } });
+    setPage(updated);
+  };
+
+  const saveAgendaItems = async (items: AgendaNote[]) => {
+    if (!page) return;
+    const updated = await updateCustomPage(id, { content: { items } });
     setPage(updated);
   };
 
@@ -208,6 +248,24 @@ export function PaginaDetailScreen({ route, navigation }: Props) {
           </>
         ) : page?.template === "kanban" ? (
           <KanbanBoard content={(page.content as KanbanContent) ?? { columns: [] }} onChange={saveKanbanContent} />
+        ) : page?.template === "finanzas" ? (
+          <FinanceTemplateEditor entries={(page.content as FinanceContent)?.entries ?? []} onChange={saveFinanceEntries} />
+        ) : page?.template === "proyectos" ? (
+          <ChecklistTemplateEditor
+            items={(page.content as ChecklistContent)?.items ?? []}
+            onChange={saveChecklistItems}
+            emptyLabel="Añade tareas para seguir el progreso."
+          />
+        ) : page?.template === "objetivos" ? (
+          <GoalsTemplateEditor goals={(page.content as GoalsContent)?.goals ?? []} onChange={saveGoals} />
+        ) : page?.template === "agenda" ? (
+          <AgendaNotesTemplateEditor items={(page.content as AgendaContent)?.items ?? []} onChange={saveAgendaItems} />
+        ) : page?.template === "hoy" ? (
+          <ChecklistTemplateEditor
+            items={(page.content as ChecklistContent)?.items ?? []}
+            onChange={saveChecklistItems}
+            emptyLabel="Añade lo que tengas que hacer hoy."
+          />
         ) : page ? (
           <View style={styles.fallbackCard}>
             <Text style={styles.fallbackText}>
@@ -418,6 +476,17 @@ function GalleryItemForm({
   );
 }
 
+// Mismos colores que el tablero del Planificador (ver COLUMN_STYLES/COLUMN_HEADER_STYLES en
+// dashboard/src/pages/PlanificadorPage.tsx), ciclados por posición en vez de por un status fijo
+// — igual criterio que KANBAN_COLUMN_STYLES en dashboard/src/pages/CustomPagePage.tsx: una página
+// de kanban puede tener cualquier número de columnas con el nombre que el usuario quiera, así que
+// no hay un "estado" al que atar cada color, solo su orden.
+const KANBAN_COLUMN_STYLES: { box: { borderColor: string; backgroundColor: string }; header: string }[] = [
+  { box: { borderColor: colors.border, backgroundColor: colors.card }, header: colors.foreground },
+  { box: { borderColor: "rgba(200, 123, 0, 0.3)", backgroundColor: "rgba(200, 123, 0, 0.1)" }, header: colors.warning },
+  { box: { borderColor: "rgba(95, 113, 97, 0.3)", backgroundColor: "rgba(95, 113, 97, 0.1)" }, header: colors.positive },
+];
+
 // Tablero kanban — puerto simplificado de la sección Kanban en dashboard/src/pages/
 // CustomPagePage.tsx: columnas dinámicas con tarjetas, pero sin arrastrar (mover una tarjeta es
 // abrirla y elegir columna en el diálogo, ver KanbanCardForm) y sin gestión de propiedades
@@ -491,10 +560,11 @@ function KanbanBoard({ content, onChange }: { content: KanbanContent; onChange: 
     <View style={{ gap: 16 }}>
       {content.columns.length === 0 && <Text style={styles.emptyText}>Sin columnas todavía.</Text>}
 
-      {content.columns.map((column) => (
+      {content.columns.map((column, index) => (
         <KanbanColumnView
           key={column.id}
           column={column}
+          tone={KANBAN_COLUMN_STYLES[index % KANBAN_COLUMN_STYLES.length]}
           onRename={(t) => renameColumn(column.id, t)}
           onDelete={() => deleteColumn(column.id)}
           onAddCard={(text) => addCard(column.id, text)}
@@ -564,12 +634,14 @@ function KanbanBoard({ content, onChange }: { content: KanbanContent; onChange: 
 
 function KanbanColumnView({
   column,
+  tone,
   onRename,
   onDelete,
   onAddCard,
   onOpenCard,
 }: {
   column: KanbanColumn;
+  tone: { box: { borderColor: string; backgroundColor: string }; header: string };
   onRename: (title: string) => Promise<void>;
   onDelete: () => Promise<void>;
   onAddCard: (text: string) => Promise<void>;
@@ -596,12 +668,12 @@ function KanbanColumnView({
   };
 
   return (
-    <View style={styles.kanbanColumn}>
+    <View style={[styles.kanbanColumn, tone.box]}>
       <View style={styles.kanbanColumnHeader}>
         {editingTitle ? (
           <TextInput
             autoFocus
-            style={styles.kanbanColumnTitleInput}
+            style={[styles.kanbanColumnTitleInput, { color: tone.header }]}
             value={titleDraft}
             onChangeText={setTitleDraft}
             onBlur={commitTitle}
@@ -609,7 +681,7 @@ function KanbanColumnView({
           />
         ) : (
           <Pressable style={{ flex: 1, minWidth: 0 }} onPress={() => setEditingTitle(true)}>
-            <Text numberOfLines={1} style={styles.kanbanColumnTitle}>
+            <Text numberOfLines={1} style={[styles.kanbanColumnTitle, { color: tone.header }]}>
               {column.title}
             </Text>
           </Pressable>
@@ -745,6 +817,311 @@ function KanbanCardForm({
   );
 }
 
+function formatMoney(amount: number): string {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(amount);
+}
+
+// Puerto de FinanceTemplate en dashboard/src/pages/CustomPagePage.tsx — sin editar un movimiento
+// ya creado (la web tampoco lo permite, solo añadir/borrar), formulario siempre visible en vez de
+// detrás de un botón "+" (así en la web).
+function FinanceTemplateEditor({ entries, onChange }: { entries: FinanceEntry[]; onChange: (entries: FinanceEntry[]) => Promise<void> }) {
+  const [type, setType] = useState<"income" | "expense">("expense");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const balance = entries.reduce((sum, e) => sum + (e.type === "income" ? e.amount : -e.amount), 0);
+
+  const add = async () => {
+    const n = Number(amount);
+    const trimmedCategory = category.trim();
+    if (!Number.isFinite(n) || n <= 0 || !trimmedCategory) return;
+    setSaving(true);
+    await onChange([{ id: Crypto.randomUUID(), type, amount: n, category: trimmedCategory, description: description.trim() }, ...entries]);
+    setAmount("");
+    setCategory("");
+    setDescription("");
+    setSaving(false);
+  };
+
+  const remove = (entryId: string) => onChange(entries.filter((e) => e.id !== entryId));
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View style={styles.balanceCard}>
+        <Text style={styles.balanceLabel}>Balance</Text>
+        <Text style={[styles.balanceValue, { color: balance >= 0 ? colors.positive : colors.destructive }]}>{formatMoney(balance)}</Text>
+      </View>
+
+      <View style={styles.formCard}>
+        <View style={styles.chipRow}>
+          <Pressable style={[styles.chip, type === "expense" && styles.chipSelected]} onPress={() => setType("expense")}>
+            <Text style={[styles.chipText, type === "expense" && styles.chipTextSelected]}>Gasto</Text>
+          </Pressable>
+          <Pressable style={[styles.chip, type === "income" && styles.chipSelected]} onPress={() => setType("income")}>
+            <Text style={[styles.chipText, type === "income" && styles.chipTextSelected]}>Ingreso</Text>
+          </Pressable>
+        </View>
+        <TextInput style={styles.input} placeholder="Importe" value={amount} onChangeText={setAmount} keyboardType="numeric" />
+        <TextInput style={styles.input} placeholder="Categoría" value={category} onChangeText={setCategory} />
+        <TextInput style={styles.input} placeholder="Descripción (opcional)" value={description} onChangeText={setDescription} />
+        <Pressable style={styles.saveButtonSmall} onPress={add} disabled={saving}>
+          <Text style={styles.saveButtonSmallText}>{saving ? "Añadiendo…" : "+ Añadir"}</Text>
+        </Pressable>
+      </View>
+
+      {entries.length === 0 ? (
+        <Text style={styles.emptyText}>Todavía no has apuntado ningún movimiento.</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {entries.map((entry) => (
+            <View key={entry.id} style={styles.rowCard}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={styles.rowCardTitle}>
+                  {entry.category}
+                </Text>
+                {entry.description ? (
+                  <Text numberOfLines={1} style={styles.rowCardSubtitle}>
+                    {entry.description}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={[styles.financeAmount, { color: entry.type === "income" ? colors.positive : colors.destructive }]}>
+                {entry.type === "income" ? "+" : "-"}
+                {formatMoney(entry.amount)}
+              </Text>
+              <Pressable onPress={() => remove(entry.id)} hitSlop={8}>
+                <Text style={styles.rowCardDelete}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Puerto de ChecklistTemplate en dashboard/src/pages/CustomPagePage.tsx — reutilizado por
+// "proyectos" (y, si algún día se porta, "hoy": mismo tipo/componente en la propia web). Solo
+// texto + hecho, sin fecha límite ni prioridad — eso es del Planificador real, no de esta
+// plantilla suelta.
+function ChecklistTemplateEditor({
+  items,
+  onChange,
+  emptyLabel,
+}: {
+  items: ChecklistItem[];
+  onChange: (items: ChecklistItem[]) => Promise<void>;
+  emptyLabel: string;
+}) {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    await onChange([...items, { id: Crypto.randomUUID(), text: trimmed, done: false }]);
+    setText("");
+    setSaving(false);
+  };
+
+  const toggle = (itemId: string) => onChange(items.map((it) => (it.id === itemId ? { ...it, done: !it.done } : it)));
+  const remove = (itemId: string) => onChange(items.filter((it) => it.id !== itemId));
+
+  return (
+    <View style={styles.formCard}>
+      <View style={styles.checklistInputRow}>
+        <TextInput
+          style={[styles.input, styles.checklistInput]}
+          placeholder="Añadir…"
+          value={text}
+          onChangeText={setText}
+          onSubmitEditing={add}
+        />
+        <Pressable style={styles.saveButtonSmall} onPress={add} disabled={saving}>
+          <Text style={styles.saveButtonSmallText}>+ Añadir</Text>
+        </Pressable>
+      </View>
+      {items.length === 0 ? (
+        <Text style={styles.emptyText}>{emptyLabel}</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {items.map((it) => (
+            <View key={it.id} style={styles.checklistRow}>
+              <Pressable style={[styles.checklistCheckbox, it.done && styles.checklistCheckboxDone]} onPress={() => toggle(it.id)}>
+                {it.done && <Text style={styles.checklistCheckboxMark}>✓</Text>}
+              </Pressable>
+              <Text numberOfLines={2} style={[styles.checklistText, it.done && styles.checklistTextDone]}>
+                {it.text}
+              </Text>
+              <Pressable onPress={() => remove(it.id)} hitSlop={8}>
+                <Text style={styles.rowCardDelete}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Puerto de GoalsTemplate en dashboard/src/pages/CustomPagePage.tsx — sin unidad/periodo/
+// bonificación (eso es del modelo Goal real de la sección Objetivos, no de esta plantilla suelta);
+// el progreso solo avanza de uno en uno con "+1", sin poder saltar a un valor concreto.
+function GoalsTemplateEditor({ goals, onChange }: { goals: SimpleGoal[]; onChange: (goals: SimpleGoal[]) => Promise<void> }) {
+  const [title, setTitle] = useState("");
+  const [target, setTarget] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    const trimmed = title.trim();
+    const n = Number(target);
+    if (!trimmed || !Number.isFinite(n) || n <= 0) return;
+    setSaving(true);
+    await onChange([...goals, { id: Crypto.randomUUID(), title: trimmed, target: n, current: 0 }]);
+    setTitle("");
+    setTarget("");
+    setSaving(false);
+  };
+
+  const bump = (goalId: string) =>
+    onChange(goals.map((g) => (g.id === goalId ? { ...g, current: Math.min(g.target, g.current + 1) } : g)));
+  const remove = (goalId: string) => onChange(goals.filter((g) => g.id !== goalId));
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View style={styles.formCard}>
+        <TextInput style={styles.input} placeholder="Nombre del objetivo" value={title} onChangeText={setTitle} />
+        <TextInput style={styles.input} placeholder="Meta" value={target} onChangeText={setTarget} keyboardType="numeric" />
+        <Pressable style={styles.saveButtonSmall} onPress={add} disabled={saving}>
+          <Text style={styles.saveButtonSmallText}>{saving ? "Añadiendo…" : "+ Añadir"}</Text>
+        </Pressable>
+      </View>
+
+      {goals.length === 0 ? (
+        <Text style={styles.emptyText}>Todavía no tienes objetivos en esta página.</Text>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {goals.map((g) => {
+            const pct = g.target > 0 ? Math.min(100, Math.round((g.current / g.target) * 100)) : 0;
+            return (
+              <View key={g.id} style={styles.goalCard}>
+                <View style={styles.goalHeader}>
+                  <Text numberOfLines={1} style={styles.goalTitle}>
+                    {g.title}
+                  </Text>
+                  <Text style={styles.goalMeta}>
+                    {g.current} / {g.target}
+                  </Text>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                </View>
+                <View style={styles.goalActions}>
+                  <Pressable style={styles.goalBumpButton} onPress={() => bump(g.id)} disabled={g.current >= g.target}>
+                    <Text style={styles.goalBumpButtonText}>+1</Text>
+                  </Pressable>
+                  <Pressable onPress={() => remove(g.id)}>
+                    <Text style={styles.goalDeleteText}>Eliminar</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Formato local YYYY-MM-DD — a propósito NO usa `Date.toISOString()` (convierte a UTC antes de
+// recortar, así que cerca de medianoche podría devolver el día de al lado según la zona horaria
+// del dispositivo). Mismo criterio que dateKey() en AnnualCalendarLegend.tsx.
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Puerto de AgendaNotesTemplate en dashboard/src/pages/CustomPagePage.tsx — notas sueltas con
+// fecha, propias de la página (no tocan Event/Note reales). El selector de fecha es el mismo
+// DateTimePicker nativo que ya usa AgendaScreen.tsx para el formulario de eventos.
+function AgendaNotesTemplateEditor({ items, onChange }: { items: AgendaNote[]; onChange: (items: AgendaNote[]) => Promise<void> }) {
+  const [date, setDate] = useState(() => new Date());
+  const [text, setText] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const add = async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    await onChange([...items, { id: Crypto.randomUUID(), date: localDateKey(date), text: trimmed }]);
+    setText("");
+    setSaving(false);
+  };
+
+  const remove = (itemId: string) => onChange(items.filter((it) => it.id !== itemId));
+
+  const sorted = [...items].sort((a, b) => a.date.localeCompare(b.date));
+
+  const onDateChange = (_event: DateTimePickerChangeEvent, selected: Date) => {
+    setShowPicker(false);
+    if (selected) setDate(selected);
+  };
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View style={styles.formCard}>
+        <Pressable style={styles.dateButton} onPress={() => setShowPicker(true)}>
+          <Text style={styles.dateButtonText}>
+            {date.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
+          </Text>
+        </Pressable>
+        <TextInput style={styles.input} placeholder="¿Qué apuntas?" value={text} onChangeText={setText} onSubmitEditing={add} />
+        <Pressable style={styles.saveButtonSmall} onPress={add} disabled={saving}>
+          <Text style={styles.saveButtonSmallText}>{saving ? "Añadiendo…" : "+ Añadir"}</Text>
+        </Pressable>
+      </View>
+
+      {sorted.length === 0 ? (
+        <Text style={styles.emptyText}>Todavía no hay notas en esta agenda.</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {sorted.map((it) => (
+            <View key={it.id} style={styles.rowCard}>
+              <View style={styles.agendaDatePill}>
+                <Text style={styles.agendaDatePillText}>
+                  {new Date(`${it.date}T00:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                </Text>
+              </View>
+              <Text numberOfLines={2} style={[styles.rowCardTitle, { flex: 1, minWidth: 0 }]}>
+                {it.text}
+              </Text>
+              <Pressable onPress={() => remove(it.id)} hitSlop={8}>
+                <Text style={styles.rowCardDelete}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {showPicker && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "default"}
+          onValueChange={onDateChange}
+          onDismiss={() => setShowPicker(false)}
+        />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, gap: 12, paddingBottom: 40 },
@@ -876,6 +1253,12 @@ const styles = StyleSheet.create({
   saveContentButtonText: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.primaryForeground },
 
   // ========== KANBAN ==========
+  // Sin sombra a propósito, a diferencia de otras tarjetas del mismo fichero: el color de columna
+  // (KANBAN_COLUMN_STYLES) tiñe el fondo con un color translúcido en 2 de cada 3 columnas, y en
+  // Android `elevation` sobre un fondo con alpha pinta un halo grueso pegado al borde en vez de
+  // una sombra suave (mismo criterio ya documentado en el estilo `section` de HoyScreen.tsx) — se
+  // quita para las tres, no solo para las tintadas, así las columnas no varían de "profundidad"
+  // entre sí según les toque el tono neutro o uno de color.
   kanbanColumn: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
@@ -883,7 +1266,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 14,
     gap: 8,
-    ...shadow,
   },
   kanbanColumnHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
   kanbanColumnTitle: { flex: 1, minWidth: 0, fontFamily: fonts.sansSemiBold, fontSize: 15, color: colors.foreground },
@@ -954,4 +1336,101 @@ const styles = StyleSheet.create({
   chipSelected: { backgroundColor: colors.primaryTint, borderColor: colors.primary },
   chipText: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
   chipTextSelected: { fontFamily: fonts.sansMedium, color: colors.primary },
+
+  // ========== FINANZAS / PROYECTOS / OBJETIVOS (plantillas) ==========
+  // card-soft flex items-center justify-between de la web (balance de la plantilla Finanzas).
+  balanceCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    ...shadow,
+  },
+  balanceLabel: { fontFamily: fonts.sans, fontSize: 13, color: colors.mutedForeground },
+  balanceValue: { fontFamily: fonts.serif, fontSize: 24 },
+  // card-soft grid ... de los formularios de alta (Finanzas/Objetivos) y card-soft del checklist
+  // (Proyectos) — misma tarjeta neutra que el resto, reutilizada para las tres.
+  formCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    gap: 10,
+    ...shadow,
+  },
+  // rounded-xl border-border bg-card de cada fila (Finanzas).
+  rowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderRadius: radius.input,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  rowCardTitle: { fontFamily: fonts.sansMedium, fontSize: 14, color: colors.foreground },
+  rowCardSubtitle: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  rowCardDelete: { fontFamily: fonts.sansMedium, fontSize: 13, color: colors.mutedForeground, padding: 4 },
+  financeAmount: { fontFamily: fonts.sansMedium, fontSize: 14 },
+
+  checklistInputRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
+  checklistInput: { flex: 1, marginBottom: 0 },
+  checklistRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  // size-5 rounded-full border de la web.
+  checklistCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: colors.inputBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  checklistCheckboxDone: { backgroundColor: colors.primaryTint, borderColor: colors.primary },
+  checklistCheckboxMark: { color: colors.primary, fontSize: 12, fontFamily: fonts.sansBold },
+  checklistText: { flex: 1, minWidth: 0, fontFamily: fonts.sans, fontSize: 14, color: colors.foreground },
+  checklistTextDone: { textDecorationLine: "line-through", color: colors.mutedForeground },
+
+  goalCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    gap: 8,
+    ...shadow,
+  },
+  goalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  goalTitle: { flex: 1, minWidth: 0, fontFamily: fonts.sansMedium, fontSize: 15, color: colors.foreground },
+  goalMeta: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+  // h-2.5 rounded-full bg-muted / bg-primary de la web — mismo criterio que ObjetivosScreen.tsx.
+  progressTrack: { height: 10, borderRadius: radius.full, backgroundColor: colors.muted, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: radius.full, backgroundColor: colors.primary },
+  goalActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  goalBumpButton: { backgroundColor: colors.primaryTint, borderRadius: radius.full, paddingHorizontal: 14, paddingVertical: 6 },
+  goalBumpButtonText: { fontFamily: fonts.sansMedium, fontSize: 12, color: colors.primary },
+  goalDeleteText: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground },
+
+  // ========== AGENDA (plantilla) ==========
+  dateButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: radius.input,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: colors.card,
+  },
+  dateButtonText: { fontFamily: fonts.sans, fontSize: 14, color: colors.foreground },
+  // rounded-full bg-secondary px-3 py-1 text-xs de la web.
+  agendaDatePill: { backgroundColor: colors.secondary, borderRadius: radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  agendaDatePillText: { fontFamily: fonts.sansMedium, fontSize: 11, color: colors.secondaryForeground },
 });

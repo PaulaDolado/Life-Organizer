@@ -86,6 +86,11 @@ interface AppShellProps {
   onCreateCustomPage: (title: string, template: CustomPageTemplate) => Promise<void>;
   onRenameCustomPage: (id: number, title: string) => Promise<void>;
   onDeleteCustomPage: (id: number) => Promise<void>;
+  // "Galería" es un apartado del menú principal (como Hoy/Agenda/...), pero por debajo sigue
+  // siendo una página personalizada de plantilla "galeria" — este callback busca la del usuario
+  // (o la crea si es la primera vez) y navega a ella; nunca hay más de una, así que a diferencia
+  // de onCreateCustomPage no hace falta pedir título/plantilla (ver DashboardPage.openGallery).
+  onOpenGallery: () => Promise<void>;
   children: ReactNode;
 }
 
@@ -116,6 +121,7 @@ export function AppShell({
   onCreateCustomPage,
   onRenameCustomPage,
   onDeleteCustomPage,
+  onOpenGallery,
   children,
 }: AppShellProps) {
   const { user, logout } = useAuth();
@@ -215,6 +221,14 @@ export function AppShell({
     .filter((e) => new Date(e.startTime).getTime() >= now)
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())[0];
 
+  // La galería del usuario nunca son varias — si ya existe una página "galeria" es siempre ESTA
+  // (ver DashboardPage.openGallery, que reutiliza la primera que encuentra en vez de crear otra).
+  // El resto de `customPages` ("Tus páginas" más abajo) la excluye explícitamente: ya tiene su
+  // propio hueco en el menú principal, listarla también ahí sería un duplicado.
+  const galleryPage = customPages.find((p) => p.template === "galeria") ?? null;
+  const galleryTab = galleryPage ? customPageTab(galleryPage.id) : null;
+  const otherPages = customPages.filter((p) => p.template !== "galeria");
+
   return (
     <div className="flex min-h-screen bg-background font-sans text-foreground">
       {/* Clon invisible del nav, sin ancho forzado, solo para medir cuánto ocupa el apartado
@@ -299,13 +313,27 @@ export function AppShell({
                     </div>
                   );
                 })}
+
+                {/* Apartado del menú principal, no una página personalizada más de "Tus páginas"
+                    — por debajo sigue siendo una (plantilla "galeria"), pero el usuario no ve ese
+                    paso intermedio: onOpenGallery busca la existente o crea la primera. */}
+                <button
+                  onClick={onOpenGallery}
+                  className={`w-full min-w-0 truncate rounded-lg px-3 py-2 text-left transition-colors ${
+                    galleryTab && activeTab === galleryTab
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-muted-foreground hover:bg-foreground/5"
+                  }`}
+                >
+                  Galería
+                </button>
               </nav>
 
               <div className="flex flex-col gap-1">
-                {customPages.length > 0 && (
+                {otherPages.length > 0 && (
                   <p className="px-3 pb-1 text-xs font-bold uppercase tracking-widest text-muted-foreground">Tus páginas</p>
                 )}
-                {customPages.map((page) => {
+                {otherPages.map((page) => {
                   const tab = customPageTab(page.id);
                   const isRenaming = renamingPageId === page.id;
                   return (
@@ -492,7 +520,15 @@ export function AppShell({
               {item.label}
             </button>
           ))}
-          {customPages.map((page) => {
+          <button
+            onClick={onOpenGallery}
+            className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm ${
+              galleryTab && activeTab === galleryTab ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground"
+            }`}
+          >
+            Galería
+          </button>
+          {otherPages.map((page) => {
             const tab = customPageTab(page.id);
             return (
               <button
@@ -837,7 +873,10 @@ function CreatePageModal({
         <form onSubmit={submit}>
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Elige un modelo</p>
           <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {CUSTOM_PAGE_TEMPLATES.map((t) => (
+            {/* "galeria" no se ofrece aquí: ya es su propio apartado del menú principal (ver el
+                botón "Galería" en AppShell), con una sola por cuenta — permitir crear otra desde
+                este diálogo genérico rompería ese "siempre hay una sola". */}
+            {CUSTOM_PAGE_TEMPLATES.filter((t) => t.key !== "galeria").map((t) => (
               <button
                 key={t.key}
                 type="button"

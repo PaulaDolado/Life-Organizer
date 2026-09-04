@@ -5,10 +5,9 @@
 // `dashboard/src/pages/CustomPagePage.tsx`.
 import { api } from "./client";
 
-// Mismas 8 plantillas que `CUSTOM_PAGE_TEMPLATES` en
-// dashboard/src/utils/customPageTemplates.ts — el móvil tiene editor propio para "galeria",
-// "nota" y "kanban" (ver PaginaDetailScreen.tsx); el resto se puede abrir (título/subtítulo
-// editables) pero su contenido se edita desde la web.
+// Las 8 plantillas de `CUSTOM_PAGE_TEMPLATES` en dashboard/src/utils/customPageTemplates.ts ya
+// tienen todas editor propio en el móvil (ver PaginaDetailScreen.tsx) — "hoy" reutiliza el mismo
+// componente que "proyectos" (mismo tipo ChecklistContent, igual que en la propia web).
 export const CUSTOM_PAGE_TEMPLATES = ["nota", "kanban", "galeria", "finanzas", "proyectos", "objetivos", "agenda", "hoy"] as const;
 export type CustomPageTemplate = (typeof CUSTOM_PAGE_TEMPLATES)[number];
 
@@ -86,9 +85,62 @@ export interface KanbanContent {
   fieldDefs?: CustomFieldDef[];
 }
 
-// El resto de plantillas también son JSON libre (`{ goals }`, `{ entries }`...) pero el móvil no
-// tiene editor para ellas todavía — se tratan como opacas (`unknown`).
-export type CustomPageContent = GalleryContent | NotaContent | KanbanContent | Record<string, unknown>;
+// Mismo tipo que CustomPageContentMap["finanzas"] en dashboard/src/types.ts — ingresos/gastos
+// propios de la página, no tocan el modelo Transaction real de la sección Finanzas de la app.
+export interface FinanceEntry {
+  id: string;
+  type: "income" | "expense";
+  amount: number;
+  category: string;
+  description: string;
+}
+export interface FinanceContent {
+  entries: FinanceEntry[];
+}
+
+// Checklist plano (solo texto + hecho, sin fecha límite ni prioridad) — compartido por las
+// plantillas "proyectos" y "hoy" en la web (mismo tipo, mismo componente `ChecklistTemplate`).
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+export interface ChecklistContent {
+  items: ChecklistItem[];
+}
+
+// Objetivo propio de la página (sin unidad/periodo/bonificación, a diferencia del modelo Goal
+// real de la sección Objetivos) — el progreso solo avanza de uno en uno (ver GoalsTemplateEditor).
+export interface SimpleGoal {
+  id: string;
+  title: string;
+  target: number;
+  current: number;
+}
+export interface GoalsContent {
+  goals: SimpleGoal[];
+}
+
+// Nota suelta con fecha, propia de la página (no toca Event/Note reales) — mismo tipo que
+// CustomPageContentMap["agenda"] en dashboard/src/types.ts.
+export interface AgendaNote {
+  id: string;
+  date: string; // YYYY-MM-DD
+  text: string;
+}
+export interface AgendaContent {
+  items: AgendaNote[];
+}
+
+export type CustomPageContent =
+  | GalleryContent
+  | NotaContent
+  | KanbanContent
+  | FinanceContent
+  | ChecklistContent
+  | GoalsContent
+  | AgendaContent
+  | Record<string, unknown>;
 
 export interface CustomPage extends CustomPageSummary {
   content: CustomPageContent;

@@ -40,7 +40,10 @@ export function PaginasListScreen({ navigation }: Props) {
     setLoading(true);
     setError(null);
     try {
-      setPages(await listCustomPages());
+      // "galeria" no aparece aquí: ya tiene su propio apartado "Galería" en el menú principal
+      // (con una sola por cuenta, ver AppSidebar.openGallery) — listarla también en esta pantalla
+      // duplicaría la entrada.
+      setPages((await listCustomPages()).filter((p) => p.template !== "galeria"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudieron cargar las páginas");
     } finally {

@@ -113,6 +113,8 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
 
   const activeRoute = state.routes[state.index].name;
   const maxWidth = Math.round(screenWidth * 0.74);
+  // "Tus páginas" no repite la galería: ya tiene su propio botón (ver openGallery/render).
+  const otherPages = customPages.filter((p) => p.template !== "galeria");
 
   const measuredMax = Math.max(0, ...Object.values(labelWidths));
   const sidebarWidth = Math.min(Math.max(DEFAULT_WIDTH, measuredMax + WIDTH_PADDING), maxWidth);
@@ -194,6 +196,20 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
 
   const openPage = (page: CustomPageSummary) => {
     navigation.navigate("Páginas", { screen: "Detalle", params: { id: page.id, title: page.title } });
+    setCollapsed(true);
+  };
+
+  // "Galería" es un apartado del menú principal (como Hoy/Agenda/...), igual que en
+  // dashboard/src/components/AppShell.tsx: por debajo sigue siendo una página personalizada de
+  // plantilla "galeria", pero nunca hay más de una — busca la del usuario (consulta fresca, no
+  // el `customPages` ya en estado, para no crear una segunda por una lista todavía sin cargar la
+  // primera vez) o la crea, y navega a su detalle igual que openPage/handleCreatePage.
+  const openGallery = async () => {
+    const pages = await listCustomPages();
+    let galleryPage = pages.find((p) => p.template === "galeria") ?? null;
+    if (!galleryPage) galleryPage = await createCustomPage("Galería", "galeria");
+    await reloadCustomPages();
+    navigation.navigate("Páginas", { screen: "Detalle", params: { id: galleryPage.id, title: galleryPage.title } });
     setCollapsed(true);
   };
 
@@ -315,14 +331,25 @@ export function AppSidebar({ state, navigation }: BottomTabBarProps) {
               );
             })}
 
+            {/* Apartado del menú principal, no una página personalizada más de "Tus páginas" —
+                mismo criterio que el botón "Galería" de dashboard/src/components/AppShell.tsx:
+                por debajo sigue siendo una página de plantilla "galeria", pero openGallery busca
+                la existente o crea la primera, así que el usuario no ve ese paso intermedio. */}
+            <Pressable onPress={openGallery} style={styles.navButton}>
+              <Text numberOfLines={1} style={styles.navLabel}>
+                🖼  Galería
+              </Text>
+            </Pressable>
+
             {/* "Tus páginas" — mismo criterio que dashboard/src/components/AppShell.tsx: cada
                 página creada aparece aquí, tocarla navega directo a su detalle. Sin renombrar/
                 borrar inline (eso ya se puede hacer entrando en el detalle de la página, ver
-                PaginaDetailScreen.tsx) — el pedido era solo que se vieran en el menú. */}
-            {customPages.length > 0 && (
+                PaginaDetailScreen.tsx) — el pedido era solo que se vieran en el menú. Excluye
+                "galeria": esa ya tiene su propio hueco arriba, listarla aquí también duplicaría. */}
+            {otherPages.length > 0 && (
               <>
                 <Text style={styles.navSectionLabel}>Tus páginas</Text>
-                {customPages.map((page) => (
+                {otherPages.map((page) => (
                   <Pressable key={page.id} onPress={() => openPage(page)} style={styles.navButton}>
                     <Text numberOfLines={1} style={styles.navLabel}>
                       {page.title}

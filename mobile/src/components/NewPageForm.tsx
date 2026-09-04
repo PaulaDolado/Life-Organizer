@@ -3,6 +3,14 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from "react-
 import { CUSTOM_PAGE_TEMPLATES, CustomPageTemplate, TEMPLATE_LABELS } from "../api/customPages";
 import { colors, fonts, radius } from "../theme";
 
+// "galeria" no se ofrece aquí: desde que tiene su propio apartado "Galería" en el menú principal
+// (con una sola por cuenta, ver AppSidebar.openGallery), permitir crearla también desde este
+// diálogo genérico rompería ese "siempre hay una sola" — mismo criterio que CreatePageModal en
+// dashboard/src/components/AppShell.tsx. El resto de plantillas ya tienen todas editor propio en
+// el móvil (ver PaginaDetailScreen.tsx), así que ya no hace falta ningún aviso de "solo se edita
+// desde la web" aquí.
+const CREATABLE_TEMPLATES = CUSTOM_PAGE_TEMPLATES.filter((t) => t !== "galeria");
+
 // Formulario de "Nueva página personalizada" (plantilla + título) — extraído de
 // PaginasListScreen.tsx para poder reutilizarlo también desde AppSidebar.tsx (ver el botón
 // "+ Nueva página" al final del menú, puerto del mismo botón en dashboard/src/components/
@@ -15,8 +23,8 @@ export function NewPageForm({
   onSubmit: (title: string, template: CustomPageTemplate) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [template, setTemplate] = useState<CustomPageTemplate>("galeria");
-  const [title, setTitle] = useState(TEMPLATE_LABELS.galeria);
+  const [template, setTemplate] = useState<CustomPageTemplate>("nota");
+  const [title, setTitle] = useState(TEMPLATE_LABELS.nota);
   const [titleTouched, setTitleTouched] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -38,15 +46,12 @@ export function NewPageForm({
 
       <Text style={styles.fieldLabel}>Plantilla</Text>
       <View style={styles.chipRow}>
-        {CUSTOM_PAGE_TEMPLATES.map((t) => (
+        {CREATABLE_TEMPLATES.map((t) => (
           <Pressable key={t} style={[styles.chip, template === t && styles.chipSelected]} onPress={() => selectTemplate(t)}>
             <Text style={[styles.chipText, template === t && styles.chipTextSelected]}>{TEMPLATE_LABELS[t]}</Text>
           </Pressable>
         ))}
       </View>
-      {template !== "galeria" && (
-        <Text style={styles.hint}>Esta plantilla se crea igual que en la web, pero de momento solo se edita desde ahí.</Text>
-      )}
 
       <TextInput
         style={styles.input}
@@ -78,7 +83,6 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     marginBottom: 6,
   },
-  hint: { fontFamily: fonts.sans, fontSize: 12, color: colors.mutedForeground, marginTop: -6, marginBottom: 12 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   chip: {
     paddingHorizontal: 14,
